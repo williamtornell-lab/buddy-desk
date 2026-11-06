@@ -1424,7 +1424,115 @@
         if (view) renderCoin(view);
       }
     }
+    renderDeskStatus(s);
     resolvePendingLogos();
+  }
+
+  function statusRow(label, value) {
+    return '<div class="status-row"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>';
+  }
+
+  function renderDeskStatus(s) {
+    const host = $("#deskStatus");
+    if (!host) return;
+    const settings = s.settings && typeof s.settings === "object" && !Array.isArray(s.settings) ? s.settings : {};
+    const status = s.desk_status && typeof s.desk_status === "object" ? s.desk_status : null;
+    const active = (status && status.thresholds_active) || {};
+    const demo = !!(s.demo || state.fixture || isDemoPreview());
+    const ts = toUnix(s.ts);
+    const age = ts ? Math.max(0, Math.round(Date.now() / 1000 - ts)) : null;
+    const pick = (key) => {
+      if (active[key] != null && active[key] !== "") return active[key];
+      if (settings[key] != null && settings[key] !== "") return settings[key];
+      return null;
+    };
+    const shown = [
+      ["Liquidity floor", "min_liquidity_usd", "$"],
+      ["Top 10 max", "max_top10_pct", "%"],
+      ["Hourly rise cap", "max_h1_change_pct", "%"],
+      ["Min pool age", "min_pool_age_min", "m"],
+      ["Alive h1 volume", "alive_volume_h1", "$"],
+      ["Organic h1 buys", "organic_buys_h1", ""],
+      ["Min score", "min_score", ""],
+      ["Stop", "stop_pct", "%"],
+      ["Trail start", "trail_start_pct", "%"],
+      ["Trail giveback", "trail_pct", "%"]
+    ];
+    let html = '<p class="status-k">Active thresholds in this state file</p>';
+    if (demo) {
+      html += '<p>Demo sample. These are not the live desk baselines.</p>';
+    }
+    let any = false;
+    shown.forEach((spec) => {
+      const value = pick(spec[1]);
+      if (value == null) return;
+      any = true;
+      const prefix = spec[2] === "$" ? "$" : "";
+      const suffix = spec[2] === "%" || spec[2] === "m" ? spec[2] : "";
+      html += statusRow(spec[0], prefix + value + suffix);
+    });
+    if (!any) html += "<p>No scanner thresholds in this state file.</p>";
+    html += statusRow("State file age", age == null ? "unknown" : age + "s");
+    if (!status) {
+      html += '<p class="status-note">Warmup, rejection classes, and checked-versus-watch signals are not in this state file yet.</p>';
+      html += "<p>Social checks and trade streaming are not shown as live. This file does not include them.</p>";
+      host.innerHTML = html;
+      return;
+    }
+    const mom = status.early_momentum || {};
+    html += '<p class="status-k">Early momentum</p>';
+    html += statusRow("Enabled", mom.enabled ? "yes" : "no");
+    html += statusRow("Custom exits", mom.custom_exits ? "on" : "off");
+    html += statusRow("Warming", mom.warming_mints == null ? "—" : String(mom.warming_mints));
+    html += statusRow("Quote clock", mom.quote_clock || "not provided");
+    if (mom.freshness_note) html += "<p>" + esc(mom.freshness_note) + "</p>";
+    const policy = mom.policy;
+    const policyLive = policy && policy.enabled_for_new_paper === true
+      && Number(policy.initial_usd) === 20 && Number(policy.max_invested_usd) === 40
+      && Number(policy.recover_gain_pct) === 30 && Number(policy.final_gain_pct) === 50;
+    if (policyLive) {
+      html += statusRow("Initial paper buy", "$20");
+      html += statusRow("Add-on cap", "$40");
+      html += statusRow("Recover capital", "+30%");
+      html += statusRow("Final sell", "+50%");
+      html += "<p>New paper positions only. Existing tickets stay as they are. Slippage is not modeled. This is not a profit promise.</p>";
+    } else {
+      html += '<p class="status-note">Paper $20, one add to $40, recover at +30%, final sell at +50% is pending until this state file publishes it.</p>';
+    }
+    const qualified = status.qualified_signals_overnight;
+    html += statusRow(
+      "Qualifying signals",
+      (qualified == null ? "—" : String(qualified)) + " / " + (status.signal_target || "—") + " target"
+    );
+    html += "<p>The target is not a quota, not a fill count, and not a profit promise.</p>";
+    const klass = status.funnel && status.funnel.scan_reason_class;
+    if (klass && typeof klass === "object") {
+      html += '<p class="status-k">Rejection classes</p>';
+      ["unsafe", "missing", "temporary", "quality"].forEach((name) => {
+        if (klass[name] == null) return;
+        html += statusRow(name, String(klass[name]));
+      });
+      html += "<p>Missing means the evidence was unavailable. Unsafe means a real reject. They are not the same.</p>";
+    }
+    const signals = Array.isArray(status.recent_signals) ? status.recent_signals : [];
+    html += '<p class="status-k">Signals</p>';
+    if (!signals.length) {
+      html += "<p>No checked buy signals or unverified watches in this file.</p>";
+    } else {
+      signals.slice(0, 6).forEach((item) => {
+        const checked = item.kind === "checked_buy_signal" && item.qualified;
+        const label = checked ? "Checked buy signal" : "Unverified watch — not a buy";
+        html += "<p><strong>" + esc(label) + "</strong> " + esc(item.strategy || "") + "</p>";
+      });
+    }
+    const social = status.social || {};
+    const stream = status.streaming || {};
+    const fast = status.fast_move || {};
+    html += '<p class="status-k">Not live</p>';
+    html += "<p>Social: " + esc(social.live ? "marked live" : "not live") + ". " + esc(social.note || "No social automation in this file.") + "</p>";
+    html += "<p>Streaming: " + esc(stream.connected ? "connected" : "not connected") + ". Seconds reaction claimed: " + esc(String(stream.seconds_claimed === true)) + ".</p>";
+    html += "<p>" + esc(fast.label || "Unverified pump watches are not buy signals.") + "</p>";
+    host.innerHTML = html;
   }
 
   function groupedTrades(trades, rowIndex) {
