@@ -1486,6 +1486,19 @@
     html += statusRow("Warming", mom.warming_mints == null ? "—" : String(mom.warming_mints));
     html += statusRow("Quote clock", mom.quote_clock || "not provided");
     if (mom.freshness_note) html += "<p>" + esc(mom.freshness_note) + "</p>";
+    const policy = mom.policy;
+    const policyLive = policy && policy.enabled_for_new_paper === true
+      && Number(policy.initial_usd) === 20 && Number(policy.max_invested_usd) === 40
+      && Number(policy.recover_gain_pct) === 30 && Number(policy.final_gain_pct) === 50;
+    if (policyLive) {
+      html += statusRow("Initial paper buy", "$20");
+      html += statusRow("Add-on cap", "$40");
+      html += statusRow("Recover capital", "+30%");
+      html += statusRow("Final sell", "+50%");
+      html += "<p>New paper positions only. Existing tickets stay as they are. Slippage is not modeled. This is not a profit promise.</p>";
+    } else {
+      html += '<p class="status-note">Paper $20, one add to $40, recover at +30%, final sell at +50% is pending until this state file publishes it.</p>';
+    }
     const qualified = status.qualified_signals_overnight;
     html += statusRow(
       "Qualifying signals",
