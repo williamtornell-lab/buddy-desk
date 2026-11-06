@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-title" content="Buddy"/>
+<title>Buddy</title>
+<link rel="stylesheet" href="static/app.css"/>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">Buddy <span id="modePill" class="pill">PAPER</span></div>
+    <div id="bal" class="bal">—</div>
+  </header>
+  <nav>
+    <button data-tab="home" class="on">Home</button>
+    <button data-tab="agents">Agents</button>
+    <button data-tab="account">Account</button>
+  </nav>
+  <main>
+    <section id="home" class="tab on">
+      <div id="positions" class="cards"></div>
+      <h2>Activity</h2>
+      <div id="activity" class="feed"></div>
+    </section>
+    <section id="agents" class="tab">
+      <div id="agentCards" class="cards"></div>
+    </section>
+    <section id="account" class="tab">
+      <p class="muted">Settings are read-only on Plan B. Change them in Telegram with Buddy.</p>
+      <pre id="settingsBox" class="settings"></pre>
+      <p class="muted">FOMO · <a id="signup" href="https://fomo.family/r/savipww">invite link</a></p>
+    </section>
+    <section id="coin" class="tab">
+      <button id="backHome" class="linkish">← Home</button>
+      <h2 id="coinTitle">Coin</h2>
+      <canvas id="chart" width="390" height="180"></canvas>
+      <div id="coinMeta" class="muted"></div>
+      <a id="coinFomo" class="btn" target="_blank" rel="noopener">Open on FOMO</a>
+    </section>
+  </main>
+  <div id="err" class="err hidden"></div>
+  <div id="empty" class="empty hidden">Waiting for Buddy… add <code>#d=…</code> from your invite.</div>
+</div>
+<script src="static/app.js"></script>
+</body>
+</html>

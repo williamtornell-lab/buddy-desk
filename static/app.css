@@ -1,0 +1,25 @@
+:root{--bg:#0b0f14;--card:#141a22;--text:#e8eef7;--muted:#8b98a8;--cyan:#3de1ff;--red:#ff5c7a;--green:#3dff9a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font:15px/1.4 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text)}
+#app{max-width:430px;margin:0 auto;min-height:100vh;padding:12px 12px 80px}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.brand{font-weight:700;font-size:20px}
+.bal{font-variant-numeric:tabular-nums;color:var(--cyan)}
+.pill{font-size:11px;padding:2px 8px;border-radius:999px;background:#1e2a38;margin-left:6px}
+.pill.live{background:#3a1d28;color:var(--red)}
+nav{display:flex;gap:6px;margin:10px 0 14px}
+nav button,.btn,button.linkish{appearance:none;border:0;background:var(--card);color:var(--text);padding:10px 12px;border-radius:12px;font-weight:600}
+nav button.on{background:#1c2b3a;color:var(--cyan)}
+.tab{display:none}.tab.on{display:block}
+.cards{display:flex;flex-direction:column;gap:10px}
+.card{background:var(--card);border-radius:16px;padding:12px 14px}
+.card h3{margin:0 0 6px;font-size:15px}
+.feed .row{display:flex;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid #1c2430}
+.feed .row a{color:var(--cyan);text-decoration:none}
+.muted{color:var(--muted);font-size:13px}
+.settings{background:var(--card);padding:12px;border-radius:12px;overflow:auto;font-size:12px;color:#c9d4e3}
+.err{background:#3a1d28;color:var(--red);padding:10px;border-radius:12px;margin-top:10px}
+.empty{text-align:center;color:var(--muted);margin-top:40px}
+.hidden{display:none}
+.btn{display:inline-block;margin-top:12px;background:linear-gradient(135deg,#19c37d,#0af);color:#041018;text-decoration:none}
+.ok{color:var(--green)}.bad{color:var(--red)}
