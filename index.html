@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=20"/>
+<link rel="stylesheet" href="static/app.css?v=21"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -91,6 +91,13 @@
         <span id="healthDot" class="dot flat" aria-hidden="true"></span>
         <span id="healthText">Agents</span>
       </button>
+
+      <section class="block" aria-labelledby="deskStatusHeading">
+        <div class="sec-head">
+          <h2 id="deskStatusHeading">Desk status</h2>
+        </div>
+        <div id="deskStatus" class="sheet status-sheet"></div>
+      </section>
 
       <section class="block" aria-labelledby="waitHeading">
         <div class="sec-head">
@@ -204,6 +211,6 @@
     <p>Open the link from Telegram. It carries your desk in the <code>#d=</code> hash.</p>
   </div>
 </div>
-<script src="static/app.js?v=21"></script>
+<script src="static/app.js?v=23"></script>
 </body>
 </html>
