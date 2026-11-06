@@ -2,48 +2,136 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#07090c"/>
+<meta name="color-scheme" content="dark"/>
+<meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="Buddy"/>
+<meta name="format-detection" content="telephone=no"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css"/>
+<link rel="stylesheet" href="static/app.css?v=2"/>
 </head>
 <body>
-<div id="app">
+<div id="app" class="tone-flat">
   <header>
-    <div class="brand">Buddy <span id="modePill" class="pill">PAPER</span></div>
-    <div id="bal" class="bal">—</div>
+    <div class="brand-row">
+      <div class="brand">Buddy</div>
+      <span id="modePill" class="pill">PAPER</span>
+    </div>
+    <div id="updated" class="updated">Waiting for a desk</div>
   </header>
-  <nav>
-    <button data-tab="home" class="on">Home</button>
-    <button data-tab="agents">Agents</button>
-    <button data-tab="account">Account</button>
-  </nav>
+
   <main>
-    <section id="home" class="tab on">
-      <div id="positions" class="cards"></div>
-      <h2>Activity</h2>
-      <div id="activity" class="feed"></div>
+    <section id="home" class="tab on" aria-labelledby="homeTab">
+      <div class="hero">
+        <p class="kicker" id="stackLabel">Paper stack</p>
+        <p id="bal" class="bal">—</p>
+        <div id="pnlRow" class="pnl-row flat">
+          <span id="pnlUsd">—</span>
+          <span class="sep" aria-hidden="true"></span>
+          <span id="pnlPct">—</span>
+        </div>
+        <p id="pnlSub" class="sub">Night P&amp;L vs paper start</p>
+      </div>
+
+      <section class="chart-card" aria-labelledby="equityHeading">
+        <div class="sec-head">
+          <h2 id="equityHeading">Equity</h2>
+          <span id="chartSpan" class="muted"></span>
+        </div>
+        <div id="chart" class="chart"></div>
+        <p id="chartCaption" class="caption"></p>
+      </section>
+
+      <div id="stats" class="stats"></div>
+      <button type="button" id="health" class="health" data-goto="agents">
+        <span id="healthDot" class="dot flat" aria-hidden="true"></span>
+        <span id="healthText">Agents</span>
+      </button>
+
+      <section class="block" aria-labelledby="openHeading">
+        <div class="sec-head">
+          <h2 id="openHeading">Open</h2>
+          <span id="openCount" class="muted"></span>
+        </div>
+        <div id="positions" class="sheet"></div>
+      </section>
+
+      <section class="block" aria-labelledby="tradeHeading">
+        <div class="sec-head">
+          <h2 id="tradeHeading">Trades</h2>
+          <button type="button" id="seeTrades" class="textlink" data-goto="activity" hidden>See all</button>
+        </div>
+        <p id="realized" class="realized" hidden></p>
+        <div id="homeTrades" class="sheet"></div>
+      </section>
+
+      <section class="block" aria-labelledby="tapeHeading">
+        <div class="sec-head">
+          <h2 id="tapeHeading">Recent</h2>
+          <button type="button" id="seeActivity" class="textlink" data-goto="activity" hidden>All activity</button>
+        </div>
+        <div id="homeActivity" class="sheet"></div>
+      </section>
     </section>
-    <section id="agents" class="tab">
-      <div id="agentCards" class="cards"></div>
+
+    <section id="activity" class="tab" aria-labelledby="activityTab">
+      <div class="sec-head page-head">
+        <h2 id="activityTab">Activity</h2>
+      </div>
+      <h3 class="subhead">Trades</h3>
+      <div id="trades" class="sheet"></div>
+      <h3 class="subhead">Tape</h3>
+      <div id="activityFeed" class="sheet"></div>
     </section>
-    <section id="account" class="tab">
-      <p class="muted">Settings are read-only on Plan B. Change them in Telegram with Buddy.</p>
-      <pre id="settingsBox" class="settings"></pre>
-      <p class="muted">FOMO · <a id="signup" href="https://fomo.family/r/savipww">invite link</a></p>
+
+    <section id="agents" class="tab" aria-labelledby="agentsTab">
+      <div class="sec-head page-head">
+        <h2 id="agentsTab">Agents</h2>
+      </div>
+      <div id="agentCards" class="agents"></div>
+      <details class="settings">
+        <summary>Settings</summary>
+        <p class="hint">Read-only on Plan B. Change them in Telegram with Buddy.</p>
+        <pre id="settingsBox"></pre>
+      </details>
+      <p class="foot">FOMO · <span id="handle"></span><a id="signup" href="https://fomo.family/r/savipww">invite link</a></p>
     </section>
-    <section id="coin" class="tab">
-      <button id="backHome" class="linkish">← Home</button>
+
+    <section id="coin" class="tab" aria-labelledby="coinTitle">
+      <button type="button" id="backHome" class="textlink back">← Home</button>
+      <p id="coinSymbol" class="kicker"></p>
       <h2 id="coinTitle">Coin</h2>
-      <canvas id="chart" width="390" height="180"></canvas>
-      <div id="coinMeta" class="muted"></div>
-      <a id="coinFomo" class="btn" target="_blank" rel="noopener">Open on FOMO</a>
+      <div id="coinPnl" class="pnl-row flat"></div>
+      <dl id="coinMeta" class="meta"></dl>
+      <a id="coinFomo" class="btn" target="_blank" rel="noopener" hidden>Open on FOMO</a>
     </section>
   </main>
-  <div id="err" class="err hidden"></div>
-  <div id="empty" class="empty hidden">Waiting for Buddy… add <code>#d=…</code> from your invite.</div>
+
+  <nav class="tabbar" aria-label="Sections">
+    <button type="button" data-tab="home" class="on" aria-selected="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M10 20v-6h4v6"/></svg>
+      Home
+    </button>
+    <button type="button" data-tab="activity" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/>
+      </svg>
+      Activity
+    </button>
+    <button type="button" data-tab="agents" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="9" r="2.2"/><circle cx="17" cy="9" r="2.2"/><circle cx="12" cy="16" r="2.2"/><path d="M8.8 10.4 10.4 14M15.2 10.4 13.6 14"/></svg>
+      Agents
+    </button>
+  </nav>
+
+  <div id="err" class="err" hidden></div>
+  <div id="empty" class="empty" hidden>
+    <p class="empty-title">Waiting for Buddy</p>
+    <p>Open the link from Telegram. It carries your desk in the <code>#d=</code> hash.</p>
+  </div>
 </div>
-<script src="static/app.js"></script>
+<script src="static/app.js?v=2"></script>
 </body>
 </html>
