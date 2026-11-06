@@ -21,6 +21,40 @@
   },
   "mode_toast": "",
   "mode_toast_ts": "",
+  "desk_status": {
+    "available": true,
+    "demo": true,
+    "profits_guaranteed": false,
+    "signal_target": 20,
+    "signal_target_is_quota": false,
+    "signal_target_claimed": false,
+    "qualified_signals_overnight": 0,
+    "thresholds_active": {},
+    "early_momentum": {
+      "enabled": false,
+      "custom_exits": false,
+      "quote_clock": "not in this demo file",
+      "freshness_note": "Demo sample. No exchange quote clock and no live book.",
+      "warming_mints": 0
+    },
+    "fast_move": {
+      "delivery_enabled": false,
+      "label": "POSSIBLE PUMP—UNVERIFIED is not a buy. Not shown as live in the demo."
+    },
+    "social": {
+      "live": false,
+      "status": "unavailable",
+      "note": "Social checks are not live."
+    },
+    "streaming": {
+      "connected": false,
+      "seconds_claimed": false
+    },
+    "recent_signals": [],
+    "funnel": {
+      "scan_reason_class": {"unsafe": 0, "missing": 0, "temporary": 0, "quality": 0}
+    }
+  },
   "fomo_handle": "@demo",
   "signup_url": "https://fomo.family/r/savipww",
   "profile_url": "https://fomo.family",
