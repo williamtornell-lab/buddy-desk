@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=21"/>
+<link rel="stylesheet" href="static/app.css?v=22"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -92,11 +92,13 @@
         <span id="healthText">Agents</span>
       </button>
 
-      <section class="block" aria-labelledby="deskStatusHeading">
+      <section class="block" aria-labelledby="openHeading">
         <div class="sec-head">
-          <h2 id="deskStatusHeading">Desk status</h2>
+          <h2 id="openHeading">Open trades</h2>
+          <span id="openCount" class="muted"></span>
         </div>
-        <div id="deskStatus" class="sheet status-sheet"></div>
+        <p id="openMarks" class="caption"></p>
+        <div id="positions" class="sheet"></div>
       </section>
 
       <section class="block" aria-labelledby="waitHeading">
@@ -105,14 +107,6 @@
           <span id="waitCount" class="muted"></span>
         </div>
         <div id="waiting" class="sheet"></div>
-      </section>
-
-      <section class="block" aria-labelledby="openHeading">
-        <div class="sec-head">
-          <h2 id="openHeading">Open</h2>
-          <span id="openCount" class="muted"></span>
-        </div>
-        <div id="positions" class="sheet"></div>
       </section>
 
       <section class="block" aria-labelledby="tradeHeading">
@@ -171,6 +165,8 @@
         </div>
       </div>
       <div id="coinPnl" class="pnl-row flat"></div>
+      <div id="coinChart" class="chart"></div>
+      <p id="coinChartNote" class="caption"></p>
       <dl id="coinMeta" class="meta"></dl>
       <a id="coinFomo" class="btn" hidden>Open coin on FOMO</a>
       <a id="coinProfile" class="profile-link" href="https://fomo.family/profile/tornell?source=share_link&amp;r=savipww">My FOMO · @tornell</a>
@@ -211,6 +207,7 @@
     <p>Open the link from Telegram. It carries your desk in the <code>#d=</code> hash.</p>
   </div>
 </div>
-<script src="static/app.js?v=23"></script>
+<script src="static/marks.js?v=1"></script>
+<script src="static/app.js?v=24"></script>
 </body>
 </html>
