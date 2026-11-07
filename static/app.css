@@ -470,6 +470,8 @@ header {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
   padding: 11px 0;
   border-top: 1px solid var(--line);
 }
@@ -506,6 +508,52 @@ header {
   line-height: 1.15;
 }
 .ticker .sym { color: var(--muted); font-weight: 550; }
+.open-total {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 760;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.pricing-details { margin: 0 0 4px; }
+.pricing-details summary {
+  width: fit-content;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.pricing-details p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.open-card { min-width: 0; }
+.open-card .trade { align-items: start; }
+.open-px {
+  display: grid;
+  grid-template-columns: 2.7rem minmax(0, 1fr);
+  gap: 1px 8px;
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.open-px dt { margin: 0; color: var(--muted); font-weight: 550; }
+.open-px dd {
+  margin: 0;
+  min-width: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.open-fresh {
+  display: block;
+  margin-top: 4px;
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 650;
+}
+.open-fresh.stale { color: var(--amber); }
 .name-line, .meta-line {
   display: block;
   margin-top: 2px;
