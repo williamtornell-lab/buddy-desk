@@ -349,13 +349,20 @@
     return Math.round(s / 86400) + "d ago";
   }
 
-  function quoteText(m) {
-    if (!m || m.price == null) return "Current price unknown";
-    if (m.demo) return "Demo sample quote · not a live poll";
-    const when = m.receivedAt == null ? "read time unknown" : ageText(m.ageS);
-    const stale = m.stale ? " · stale" : "";
-    const every = m.pollS ? " · polled every " + m.pollS + "s" : "";
-    return "Last quote " + when + stale + " · exchange time unverified" + every;
+  function freshLabel(m) {
+    if (!m || m.price == null) return { text: "No quote", stale: true };
+    if (m.demo) return { text: "Sample", stale: false };
+    if (m.receivedAt == null) return { text: "Time unknown", stale: true };
+    if (m.stale) return { text: "Stale · " + ageText(m.ageS), stale: true };
+    return { text: "Updated " + ageText(m.ageS), stale: false };
+  }
+
+  function openSummaryText(valueSum, valueN, pnlSum, pnlN, unknown) {
+    if (!valueN && !pnlN) return unknown ? "Unpriced" : "";
+    const valueBit = valueN ? money(valueSum) : "Unpriced";
+    const pnlBit = pnlN ? signedMoney(pnlSum) : "";
+    const miss = unknown ? " · " + unknown + " unpriced" : "";
+    return valueBit + (pnlBit ? " · " + pnlBit : "") + miss;
   }
 
   function tradesOf(s) {
@@ -843,25 +850,7 @@
 
   function tradeBits(t, mode) {
     const bits = [sideLabel(t)];
-    if (mode === "open") {
-      const m = liveMark(t);
-      if (m.entryKind === "paper_entry" && m.entry != null) bits.push("Paper entry " + price(m.entry));
-      else if (m.entryKind === "weighted_average" && m.entry != null) bits.push("Avg entry " + price(m.entry));
-      else if (m.entry != null) bits.push("Entry " + price(m.entry));
-      else bits.push("Entry unknown");
-      if (m.entryKind === "weighted_average" && m.originalEntry != null && m.entry != null && Math.abs(m.originalEntry - m.entry) / m.entry > 0.000001) {
-        bits.push("first " + price(m.originalEntry));
-      }
-      bits.push(m.price == null ? "Now unknown" : "Now " + price(m.price));
-      if (m.pct != null) bits.push(signedPct(m.pct) + " since entry");
-      if (m.value != null) bits.push("Value " + money(m.value));
-      else if (m.walletUsd != null) bits.push("Wallet " + money(m.walletUsd));
-      else bits.push("Value unknown");
-      if (t.stop_pct != null && !String(t.mode || t.source || "").toUpperCase().includes("FOMO")) {
-        bits.push("stop −" + trimNum(t.stop_pct) + "%");
-      }
-      return bits;
-    }
+    if (mode === "open") return bits;
     if (t.exit_reason && !t.open) bits.push(labelize(t.exit_reason));
     if (t.size_usd != null) bits.push(money(t.size_usd));
     if (t.fees_usd) bits.push("fees " + money(t.fees_usd));
@@ -870,24 +859,50 @@
     return bits;
   }
 
-  function pnlMarkup(t) {
-    if (t.open) {
-      const m = liveMark(t);
-      if (m.unrealized == null) {
-        const label = m.walletUsd != null ? "value only" : "no cost basis";
-        return '<span class="pnl-col flat">' + esc(m.value != null ? money(m.value) : "—") +
-          '<span class="pct">' + esc(label) + "</span></span>";
-      }
-      const note = m.unrealizedKind === "gross_entry_fee_unknown" ? "gross" : "after entry fees";
+  function gainMarkup(m) {
+    if (m && m.unrealized != null) {
       return '<span class="pnl-col ' + toneOf(m.unrealized) + '">' + esc(signedMoney(m.unrealized)) +
-        '<span class="pct">' + esc(signedPct(m.pct) + " · " + note) + "</span></span>";
+        '<span class="pct">' + esc(signedPct(m.pct)) + "</span></span>";
     }
+    if (!m || m.price == null) {
+      return '<span class="pnl-col flat">—<span class="pct">No quote</span></span>';
+    }
+    return '<span class="pnl-col flat">—<span class="pct">No cost</span></span>';
+  }
+
+  function openCard(t, index) {
+    const m = liveMark(t);
+    const fresh = freshLabel(m);
+    const fomo = String(t.mode || t.source || "").toUpperCase();
+    const pill = fomo.indexOf("FOMO") >= 0 || t.source === "fomo" || t.source === "wallet"
+      ? '<span class="src-pill fomo">FOMO</span>' : "";
+    const entry = m.entry == null ? "unknown" : price(m.entry);
+    const nowPx = m.price == null ? "unknown" : price(m.price);
+    const value = m.value != null ? money(m.value) : (m.walletUsd != null ? money(m.walletUsd) : "unknown");
+    return (
+      '<div class="trade-row open-card">' +
+      '<button type="button" class="trade" data-trade="' + index + '">' +
+      coinLogoHtml(t.mint, t.symbol, t.name, null, pickImageUrl(t)) +
+      '<span class="who">' +
+      '<span class="ticker">' + esc(displayTicker(t)) + pill + "</span>" +
+      '<dl class="open-px"><dt>Entry</dt><dd>' + esc(entry) + "</dd><dt>Now</dt><dd>" + esc(nowPx) +
+      "</dd><dt>Value</dt><dd>" + esc(value) + "</dd></dl>" +
+      '<span class="open-fresh' + (fresh.stale ? " stale" : "") + '">' + esc(fresh.text) + "</span>" +
+      "</span>" + gainMarkup(m) +
+      "</button>" + fomoLink(t.link, "FOMO", t.mint) +
+      "</div>"
+    );
+  }
+
+  function pnlMarkup(t) {
+    if (t.open) return gainMarkup(liveMark(t));
     if (t.pnl_usd == null) return "";
     return '<span class="pnl-col ' + toneOf(t.pnl_usd) + '">' + esc(signedMoney(t.pnl_usd)) +
       '<span class="pct">' + esc(signedPct(t.pnl_pct)) + "</span></span>";
   }
 
   function tradeButton(t, index, mode) {
+    if (mode === "open") return openCard(t, index);
     const bits = tradeBits(t, mode).filter((bit) => bit.indexOf("fees ") !== 0);
     const name = displayName(t);
     if (name && name !== displayTicker(t)) bits.unshift(name);
@@ -902,7 +917,6 @@
         : '<span class="src-pill paper">PAPER</span>') +
       "</span>" +
       '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" +
-      (mode === "open" ? '<span class="meta-line">' + esc(quoteText(liveMark(t))) + "</span>" : "") +
       "</span>" + pnlMarkup(t) +
       "</button>" + fomoLink(t.link, "FOMO", t.mint) +
       "</div>"
@@ -1234,36 +1248,27 @@
       chart.innerHTML = samples.length && window.BuddyMarks ? BuddyMarks.chartSvg(samples) : "";
       chart.hidden = !samples.length;
     }
-    if (chartNote) {
-      chartNote.hidden = !(mark && mark.samples && mark.samples.length >= 2);
-      chartNote.textContent = mark && mark.entryKind === "paper_entry"
-        ? "Paper entry and quotes actually received. Gaps are not filled in. This is not a trade stream."
-        : "Recorded points only. Gaps are not filled in. This is not a trade stream.";
-    }
-    const entryLabel = mark && mark.entryKind === "paper_entry"
-      ? "Paper entry"
-      : (mark && mark.entryKind === "weighted_average" ? "Average entry" : "Entry");
-    const rows = [
+    if (chartNote) chartNote.hidden = true;
+    const fresh = mark ? freshLabel(mark) : null;
+    const rows = mark ? [
+      ["Entry", mark.entry == null ? "unknown" : price(mark.entry)],
+      ["Current", mark.price == null ? "unknown" : price(mark.price)],
+      ["Value", mark.value != null ? money(mark.value) : (mark.walletUsd != null ? money(mark.walletUsd) : "unknown")],
+      ["Quote", fresh ? fresh.text : ""],
+      ["Mint", t.mint || ""]
+    ] : [
       ["Side", sideLabel(t)],
       ["Size", t.size_usd == null ? "" : money(t.size_usd)],
-      [entryLabel, mark && mark.entry != null ? price(mark.entry) : (t.entry == null ? "" : price(t.entry))],
-      ["First entry", mark && mark.entryKind === "weighted_average" && mark.originalEntry != null ? price(mark.originalEntry) : ""],
-      ["Current", mark ? (mark.price == null ? "unknown" : price(mark.price)) : (t.exit == null ? "" : "")],
-      ["Since entry", mark && mark.pct != null ? signedPct(mark.pct) : ""],
-      ["Marked value", mark ? (mark.value == null ? (mark.walletUsd == null ? "unknown" : "") : money(mark.value)) : ""],
-      ["Wallet value", mark && mark.walletUsd != null ? money(mark.walletUsd) : ""],
-      ["Unrealized", mark ? (mark.unrealized == null ? "unknown" : signedMoney(mark.unrealized)) : ""],
-      ["Basis", mark && mark.unrealizedKind === "gross_entry_fee_unknown" ? "Gross ticket. Entry fee is not on this open row." : (mark && mark.unrealizedKind === "net_of_entry_fees" ? "Includes stored entry fees." : "")],
-      ["Quote", mark ? quoteText(mark) : ""],
-      ["Pair", mark && mark.pair ? mark.pair : ""],
+      ["Entry", t.entry == null ? "" : price(t.entry)],
       ["Exit", t.exit == null ? "" : price(t.exit)],
       ["Fees", t.fees_usd == null ? "" : money(t.fees_usd)],
       ["Opened", t.opened_at ? (clock(t.opened_at) + " · " + rel(t.opened_at)) : ""],
       ["Closed", t.closed_at ? (clock(t.closed_at) + " · " + rel(t.closed_at)) : ""],
       ["Reason", t.exit_reason ? labelize(t.exit_reason) : ""],
       ["Mint", t.mint || ""]
-    ].filter((pair) => pair[1]);
-    $("#coinMeta").innerHTML = rows.map((pair) => {
+    ];
+    const shown = rows.filter((pair) => pair[1]);
+    $("#coinMeta").innerHTML = shown.map((pair) => {
       return "<div><dt>" + esc(pair[0]) + "</dt><dd>" + esc(pair[1]) + "</dd></div>";
     }).join("");
     const link = $("#coinFomo");
@@ -1366,9 +1371,8 @@
       $("#pnlSub").textContent = "Night P&L " + startBit;
     }
     const updated = clock(s.ts);
-    const stateAge = toUnix(s.ts) == null ? "time unknown" : ageText(Math.max(0, Date.now() / 1000 - toUnix(s.ts)));
     const prefix = (state.fixture || isDemoPreview()) ? "Demo · " : "";
-    $("#updated").textContent = prefix + (updated ? "State file " + updated + " · " + stateAge : "State file time unknown");
+    $("#updated").textContent = prefix + (updated ? "Updated " + updated : "Updated time unknown");
     document.title = "Buddy · " + (live ? (fomoBal == null ? "REAL" : money(fomoBal)) : signedMoney(paperPerf.usd));
 
     let equity;
@@ -1487,17 +1491,7 @@
           pnlN += 1;
         }
       });
-      if (!opens.length) {
-        openMarks.textContent = "";
-      } else {
-        const valueBit = valueN ? ("Marked " + money(valueSum) + (unknown ? " · " + unknown + " unknown" : "")) : "Marked value unknown";
-        const pnlBit = pnlN ? ("Unrealized " + signedMoney(pnlSum) + (pnlN < opens.length ? " on " + pnlN + " of " + opens.length : "")) : "Unrealized unknown where cost is missing";
-        const cadence = (state.fixture || isDemoPreview() || s.demo)
-          ? "Demo sample, not a live poll."
-          : "DexScreener public USD price, polled every 30s. Their cache is 30s and the response has no trade time. Not a trade stream.";
-        const stateBit = "State file " + stateAge + " is the snapshot clock, not the quote.";
-        openMarks.textContent = valueBit + " · " + pnlBit + ". " + stateBit + " " + cadence + (state.quoteNote ? " " + state.quoteNote : "");
-      }
+      openMarks.textContent = opens.length ? openSummaryText(valueSum, valueN, pnlSum, pnlN, unknown) : "";
     }
     $("#positions").innerHTML = opens.length
       ? opens.map((t) => tradeButton(t, rowIndex(t), "open")).join("")
