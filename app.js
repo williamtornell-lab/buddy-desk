@@ -2,7 +2,11 @@
   const $ = (s) => document.querySelector(s);
   const state = {
   modeHoldUntil: 0,
-  modeHoldValue: null, data: null, fixture: false, coinKey: null, chartRange: "day", lastModeToastTs: "" };
+  modeHoldValue: null, data: null, fixture: false, coinKey: null, chartRange: "day", lastModeToastTs: "",
+    quotes: Object.create(null),
+    sessionSamples: Object.create(null),
+    quoteNote: ""
+  };
   const restartUi = Object.create(null);
 
   function esc(v) {
@@ -286,15 +290,72 @@
       pnl_usd: pnlUsd,
       pnl_pct: pnlPct,
       fees_usd: fees,
-      opened_at: p.opened_at || p.opened || null,
+      opened_at: p.opened_at || p.opened || p.opened_ts || null,
       closed_at: closedAt,
       exit_reason: p.exit_reason || "",
       link: p.link || "",
       stop_pct: num(p.stop_pct),
       mode: p.mode || "",
       source: p.source || "",
-      open
+      open,
+      pool: p.pool || p.pair || p.pairAddress || coin.pool || coin.pair || "",
+      qty: num(p.qty),
+      avg_entry: num(p.avg_entry),
+      invested_usd: num(p.invested_usd),
+      mark_price: num(p.mark_price != null ? p.mark_price : p.mark),
+      mark_fetched_at: toUnix(p.mark_fetched_at),
+      mark_source: p.mark_source || "",
+      mark_pair: p.mark_pair || "",
+      quote_as_of: toUnix(p.quote_as_of),
+      quote_clock: p.quote_clock || "",
+      mark_samples: Array.isArray(p.mark_samples) ? p.mark_samples : [],
+      demo: !!(p.demo || (s && s.demo))
     };
+  }
+
+  function liveMark(t) {
+    const raw = {
+      mint: t.mint,
+      source: t.source,
+      mode: t.mode,
+      entry: t.entry,
+      avg_entry: t.avg_entry,
+      opened_at: t.opened_at,
+      qty: t.qty,
+      size_usd: t.size_usd,
+      invested_usd: t.invested_usd,
+      mark_price: t.mark_price,
+      mark_fetched_at: t.mark_fetched_at,
+      mark_source: t.mark_source,
+      mark_pair: t.mark_pair,
+      quote_as_of: t.quote_as_of,
+      quote_clock: t.quote_clock,
+      mark_samples: t.mark_samples,
+      demo: t.demo || state.fixture
+    };
+    const Marks = window.BuddyMarks;
+    if (!Marks) {
+      return { price: null, value: null, unrealized: null, pct: null, samples: [], stale: true, entry: t.entry, entryKind: "unknown" };
+    }
+    return Marks.positionMark(raw, state.quotes[t.mint] || null, Date.now() / 1000, state.sessionSamples[t.mint]);
+  }
+
+  function ageText(seconds) {
+    if (seconds == null || !Number.isFinite(seconds)) return "time unknown";
+    const s = Math.max(0, Math.round(seconds));
+    if (s < 90) return s + "s ago";
+    if (s < 3600) return Math.round(s / 60) + "m ago";
+    if (s < 86400) return Math.round(s / 3600) + "h ago";
+    return Math.round(s / 86400) + "d ago";
+  }
+
+  function quoteText(m) {
+    if (!m || m.price == null) return "Current price unknown";
+    if (m.demo) return "Demo sample quote · not a live poll";
+    const when = m.receivedAt == null ? "read time unknown" : ageText(m.ageS);
+    const stale = m.stale ? " · stale" : "";
+    const every = m.pollS ? " · polled every " + m.pollS + "s" : "";
+    return "Last quote " + when + stale + " · exchange time unverified" + every;
   }
 
   function tradesOf(s) {
@@ -783,9 +844,22 @@
   function tradeBits(t, mode) {
     const bits = [sideLabel(t)];
     if (mode === "open") {
-      if (t.size_usd != null) bits.push(money(t.size_usd));
-      if (t.entry != null) bits.push("entry\u00a0" + price(t.entry));
-      if (t.stop_pct != null) bits.push("stop\u00a0−" + trimNum(t.stop_pct) + "%");
+      const m = liveMark(t);
+      if (m.entryKind === "paper_entry" && m.entry != null) bits.push("Paper entry " + price(m.entry));
+      else if (m.entryKind === "weighted_average" && m.entry != null) bits.push("Avg entry " + price(m.entry));
+      else if (m.entry != null) bits.push("Entry " + price(m.entry));
+      else bits.push("Entry unknown");
+      if (m.entryKind === "weighted_average" && m.originalEntry != null && m.entry != null && Math.abs(m.originalEntry - m.entry) / m.entry > 0.000001) {
+        bits.push("first " + price(m.originalEntry));
+      }
+      bits.push(m.price == null ? "Now unknown" : "Now " + price(m.price));
+      if (m.pct != null) bits.push(signedPct(m.pct) + " since entry");
+      if (m.value != null) bits.push("Value " + money(m.value));
+      else if (m.walletUsd != null) bits.push("Wallet " + money(m.walletUsd));
+      else bits.push("Value unknown");
+      if (t.stop_pct != null && !String(t.mode || t.source || "").toUpperCase().includes("FOMO")) {
+        bits.push("stop −" + trimNum(t.stop_pct) + "%");
+      }
       return bits;
     }
     if (t.exit_reason && !t.open) bits.push(labelize(t.exit_reason));
@@ -797,7 +871,18 @@
   }
 
   function pnlMarkup(t) {
-    if (t.open && t.pnl_usd == null) return "";
+    if (t.open) {
+      const m = liveMark(t);
+      if (m.unrealized == null) {
+        const label = m.walletUsd != null ? "value only" : "no cost basis";
+        return '<span class="pnl-col flat">' + esc(m.value != null ? money(m.value) : "—") +
+          '<span class="pct">' + esc(label) + "</span></span>";
+      }
+      const note = m.unrealizedKind === "gross_entry_fee_unknown" ? "gross" : "after entry fees";
+      return '<span class="pnl-col ' + toneOf(m.unrealized) + '">' + esc(signedMoney(m.unrealized)) +
+        '<span class="pct">' + esc(signedPct(m.pct) + " · " + note) + "</span></span>";
+    }
+    if (t.pnl_usd == null) return "";
     return '<span class="pnl-col ' + toneOf(t.pnl_usd) + '">' + esc(signedMoney(t.pnl_usd)) +
       '<span class="pct">' + esc(signedPct(t.pnl_pct)) + "</span></span>";
   }
@@ -817,6 +902,7 @@
         : '<span class="src-pill paper">PAPER</span>') +
       "</span>" +
       '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" +
+      (mode === "open" ? '<span class="meta-line">' + esc(quoteText(liveMark(t))) + "</span>" : "") +
       "</span>" + pnlMarkup(t) +
       "</button>" + fomoLink(t.link, "FOMO", t.mint) +
       "</div>"
@@ -1123,25 +1209,53 @@
     }
     $("#coinSymbol").textContent = displayTicker(t);
     $("#coinTitle").textContent = displayName(t);
+    const mark = t.open ? liveMark(t) : null;
     const row = $("#coinPnl");
-    row.className = "pnl-row " + (t.open && t.pnl_usd == null ? "flat" : toneOf(t.pnl_usd));
+    const shownUsd = mark ? mark.unrealized : t.pnl_usd;
+    const shownPct = mark ? mark.pct : t.pnl_pct;
+    row.className = "pnl-row " + (shownUsd == null ? "flat" : toneOf(shownUsd));
     row.textContent = "";
-    if (t.pnl_usd == null && t.pnl_pct == null) {
-      row.textContent = sideLabel(t);
+    if (shownUsd == null && shownPct == null) {
+      row.textContent = t.open ? "Unrealized unknown" : sideLabel(t);
     } else {
       const usd = document.createElement("span");
-      usd.textContent = signedMoney(t.pnl_usd);
+      usd.textContent = shownUsd == null ? "—" : signedMoney(shownUsd);
       const sep = document.createElement("span");
       sep.className = "sep";
       sep.setAttribute("aria-hidden", "true");
       const pct = document.createElement("span");
-      pct.textContent = signedPct(t.pnl_pct);
+      pct.textContent = shownPct == null ? "—" : signedPct(shownPct);
       row.append(usd, sep, pct);
     }
+    const chart = $("#coinChart");
+    const chartNote = $("#coinChartNote");
+    if (chart) {
+      const samples = mark && mark.samples && mark.samples.length >= 2 ? mark.samples : [];
+      chart.innerHTML = samples.length && window.BuddyMarks ? BuddyMarks.chartSvg(samples) : "";
+      chart.hidden = !samples.length;
+    }
+    if (chartNote) {
+      chartNote.hidden = !(mark && mark.samples && mark.samples.length >= 2);
+      chartNote.textContent = mark && mark.entryKind === "paper_entry"
+        ? "Paper entry and quotes actually received. Gaps are not filled in. This is not a trade stream."
+        : "Recorded points only. Gaps are not filled in. This is not a trade stream.";
+    }
+    const entryLabel = mark && mark.entryKind === "paper_entry"
+      ? "Paper entry"
+      : (mark && mark.entryKind === "weighted_average" ? "Average entry" : "Entry");
     const rows = [
       ["Side", sideLabel(t)],
       ["Size", t.size_usd == null ? "" : money(t.size_usd)],
-      ["Entry", t.entry == null ? "" : price(t.entry)],
+      [entryLabel, mark && mark.entry != null ? price(mark.entry) : (t.entry == null ? "" : price(t.entry))],
+      ["First entry", mark && mark.entryKind === "weighted_average" && mark.originalEntry != null ? price(mark.originalEntry) : ""],
+      ["Current", mark ? (mark.price == null ? "unknown" : price(mark.price)) : (t.exit == null ? "" : "")],
+      ["Since entry", mark && mark.pct != null ? signedPct(mark.pct) : ""],
+      ["Marked value", mark ? (mark.value == null ? (mark.walletUsd == null ? "unknown" : "") : money(mark.value)) : ""],
+      ["Wallet value", mark && mark.walletUsd != null ? money(mark.walletUsd) : ""],
+      ["Unrealized", mark ? (mark.unrealized == null ? "unknown" : signedMoney(mark.unrealized)) : ""],
+      ["Basis", mark && mark.unrealizedKind === "gross_entry_fee_unknown" ? "Gross ticket. Entry fee is not on this open row." : (mark && mark.unrealizedKind === "net_of_entry_fees" ? "Includes stored entry fees." : "")],
+      ["Quote", mark ? quoteText(mark) : ""],
+      ["Pair", mark && mark.pair ? mark.pair : ""],
       ["Exit", t.exit == null ? "" : price(t.exit)],
       ["Fees", t.fees_usd == null ? "" : money(t.fees_usd)],
       ["Opened", t.opened_at ? (clock(t.opened_at) + " · " + rel(t.opened_at)) : ""],
@@ -1252,8 +1366,9 @@
       $("#pnlSub").textContent = "Night P&L " + startBit;
     }
     const updated = clock(s.ts);
+    const stateAge = toUnix(s.ts) == null ? "time unknown" : ageText(Math.max(0, Date.now() / 1000 - toUnix(s.ts)));
     const prefix = (state.fixture || isDemoPreview()) ? "Demo · " : "";
-    $("#updated").textContent = prefix + (updated ? "Updated " + updated : "Updated");
+    $("#updated").textContent = prefix + (updated ? "State file " + updated + " · " + stateAge : "State file time unknown");
     document.title = "Buddy · " + (live ? (fomoBal == null ? "REAL" : money(fomoBal)) : signedMoney(paperPerf.usd));
 
     let equity;
@@ -1354,6 +1469,36 @@
     $("#healthText").className = healthTone === "ok" ? "up" : healthTone === "bad" ? "down" : "";
 
     $("#openCount").textContent = opens.length ? String(opens.length) : "";
+    const openMarks = $("#openMarks");
+    if (openMarks) {
+      let valueSum = 0;
+      let valueN = 0;
+      let pnlSum = 0;
+      let pnlN = 0;
+      let unknown = 0;
+      opens.forEach((t) => {
+        const m = liveMark(t);
+        if (m.value != null) {
+          valueSum += m.value;
+          valueN += 1;
+        } else unknown += 1;
+        if (m.unrealized != null) {
+          pnlSum += m.unrealized;
+          pnlN += 1;
+        }
+      });
+      if (!opens.length) {
+        openMarks.textContent = "";
+      } else {
+        const valueBit = valueN ? ("Marked " + money(valueSum) + (unknown ? " · " + unknown + " unknown" : "")) : "Marked value unknown";
+        const pnlBit = pnlN ? ("Unrealized " + signedMoney(pnlSum) + (pnlN < opens.length ? " on " + pnlN + " of " + opens.length : "")) : "Unrealized unknown where cost is missing";
+        const cadence = (state.fixture || isDemoPreview() || s.demo)
+          ? "Demo sample, not a live poll."
+          : "DexScreener public USD price, polled every 30s. Their cache is 30s and the response has no trade time. Not a trade stream.";
+        const stateBit = "State file " + stateAge + " is the snapshot clock, not the quote.";
+        openMarks.textContent = valueBit + " · " + pnlBit + ". " + stateBit + " " + cadence + (state.quoteNote ? " " + state.quoteNote : "");
+      }
+    }
     $("#positions").innerHTML = opens.length
       ? opens.map((t) => tradeButton(t, rowIndex(t), "open")).join("")
       : emptyTrades(live
@@ -1424,115 +1569,7 @@
         if (view) renderCoin(view);
       }
     }
-    renderDeskStatus(s);
     resolvePendingLogos();
-  }
-
-  function statusRow(label, value) {
-    return '<div class="status-row"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>';
-  }
-
-  function renderDeskStatus(s) {
-    const host = $("#deskStatus");
-    if (!host) return;
-    const settings = s.settings && typeof s.settings === "object" && !Array.isArray(s.settings) ? s.settings : {};
-    const status = s.desk_status && typeof s.desk_status === "object" ? s.desk_status : null;
-    const active = (status && status.thresholds_active) || {};
-    const demo = !!(s.demo || state.fixture || isDemoPreview());
-    const ts = toUnix(s.ts);
-    const age = ts ? Math.max(0, Math.round(Date.now() / 1000 - ts)) : null;
-    const pick = (key) => {
-      if (active[key] != null && active[key] !== "") return active[key];
-      if (settings[key] != null && settings[key] !== "") return settings[key];
-      return null;
-    };
-    const shown = [
-      ["Liquidity floor", "min_liquidity_usd", "$"],
-      ["Top 10 max", "max_top10_pct", "%"],
-      ["Hourly rise cap", "max_h1_change_pct", "%"],
-      ["Min pool age", "min_pool_age_min", "m"],
-      ["Alive h1 volume", "alive_volume_h1", "$"],
-      ["Organic h1 buys", "organic_buys_h1", ""],
-      ["Min score", "min_score", ""],
-      ["Stop", "stop_pct", "%"],
-      ["Trail start", "trail_start_pct", "%"],
-      ["Trail giveback", "trail_pct", "%"]
-    ];
-    let html = '<p class="status-k">Active thresholds in this state file</p>';
-    if (demo) {
-      html += '<p>Demo sample. These are not the live desk baselines.</p>';
-    }
-    let any = false;
-    shown.forEach((spec) => {
-      const value = pick(spec[1]);
-      if (value == null) return;
-      any = true;
-      const prefix = spec[2] === "$" ? "$" : "";
-      const suffix = spec[2] === "%" || spec[2] === "m" ? spec[2] : "";
-      html += statusRow(spec[0], prefix + value + suffix);
-    });
-    if (!any) html += "<p>No scanner thresholds in this state file.</p>";
-    html += statusRow("State file age", age == null ? "unknown" : age + "s");
-    if (!status) {
-      html += '<p class="status-note">Warmup, rejection classes, and checked-versus-watch signals are not in this state file yet.</p>';
-      html += "<p>Social checks and trade streaming are not shown as live. This file does not include them.</p>";
-      host.innerHTML = html;
-      return;
-    }
-    const mom = status.early_momentum || {};
-    html += '<p class="status-k">Early momentum</p>';
-    html += statusRow("Enabled", mom.enabled ? "yes" : "no");
-    html += statusRow("Custom exits", mom.custom_exits ? "on" : "off");
-    html += statusRow("Warming", mom.warming_mints == null ? "—" : String(mom.warming_mints));
-    html += statusRow("Quote clock", mom.quote_clock || "not provided");
-    if (mom.freshness_note) html += "<p>" + esc(mom.freshness_note) + "</p>";
-    const policy = mom.policy;
-    const policyLive = policy && policy.enabled_for_new_paper === true
-      && Number(policy.initial_usd) === 20 && Number(policy.max_invested_usd) === 40
-      && Number(policy.recover_gain_pct) === 30 && Number(policy.final_gain_pct) === 50;
-    if (policyLive) {
-      html += statusRow("Initial paper buy", "$20");
-      html += statusRow("Add-on cap", "$40");
-      html += statusRow("Recover capital", "+30%");
-      html += statusRow("Final sell", "+50%");
-      html += "<p>New paper positions only. Existing tickets stay as they are. Slippage is not modeled. This is not a profit promise.</p>";
-    } else {
-      html += '<p class="status-note">Paper $20, one add to $40, recover at +30%, final sell at +50% is pending until this state file publishes it.</p>';
-    }
-    const qualified = status.qualified_signals_overnight;
-    html += statusRow(
-      "Qualifying signals",
-      (qualified == null ? "—" : String(qualified)) + " / " + (status.signal_target || "—") + " target"
-    );
-    html += "<p>The target is not a quota, not a fill count, and not a profit promise.</p>";
-    const klass = status.funnel && status.funnel.scan_reason_class;
-    if (klass && typeof klass === "object") {
-      html += '<p class="status-k">Rejection classes</p>';
-      ["unsafe", "missing", "temporary", "quality"].forEach((name) => {
-        if (klass[name] == null) return;
-        html += statusRow(name, String(klass[name]));
-      });
-      html += "<p>Missing means the evidence was unavailable. Unsafe means a real reject. They are not the same.</p>";
-    }
-    const signals = Array.isArray(status.recent_signals) ? status.recent_signals : [];
-    html += '<p class="status-k">Signals</p>';
-    if (!signals.length) {
-      html += "<p>No checked buy signals or unverified watches in this file.</p>";
-    } else {
-      signals.slice(0, 6).forEach((item) => {
-        const checked = item.kind === "checked_buy_signal" && item.qualified;
-        const label = checked ? "Checked buy signal" : "Unverified watch — not a buy";
-        html += "<p><strong>" + esc(label) + "</strong> " + esc(item.strategy || "") + "</p>";
-      });
-    }
-    const social = status.social || {};
-    const stream = status.streaming || {};
-    const fast = status.fast_move || {};
-    html += '<p class="status-k">Not live</p>';
-    html += "<p>Social: " + esc(social.live ? "marked live" : "not live") + ". " + esc(social.note || "No social automation in this file.") + "</p>";
-    html += "<p>Streaming: " + esc(stream.connected ? "connected" : "not connected") + ". Seconds reaction claimed: " + esc(String(stream.seconds_claimed === true)) + ".</p>";
-    html += "<p>" + esc(fast.label || "Unverified pump watches are not buy signals.") + "</p>";
-    host.innerHTML = html;
   }
 
   function groupedTrades(trades, rowIndex) {
@@ -1705,6 +1742,10 @@
       $("#empty").hidden = true;
       setView("ready");
       render();
+      if (!state.quoteArmed) {
+        state.quoteArmed = true;
+        pollQuotes();
+      }
     } catch (e) {
       showErr("Buddy offline or path wrong: " + (e && e.message ? e.message : e));
       if (!state.data) setView("empty");
@@ -1788,6 +1829,57 @@
     requestMode(pendingMode);
   });
   bindChart();
+  let quoteInflight = false;
+  async function pollQuotes() {
+    if (document.visibilityState === "hidden") return;
+    if (!state.data || state.fixture || isDemoPreview() || state.data.demo) return;
+    const Marks = window.BuddyMarks;
+    if (!Marks) return;
+    const live = effectiveMode(state.data).live;
+    const opens = opensForMode(state.data, tradesOf(state.data), live);
+    const mints = [];
+    opens.forEach((t) => {
+      if (t.mint && mints.indexOf(t.mint) < 0 && mints.length < 30) mints.push(t.mint);
+    });
+    if (!mints.length || quoteInflight) return;
+    quoteInflight = true;
+    const requestedAt = Date.now() / 1000;
+    try {
+      const r = await fetch("https://api.dexscreener.com/tokens/v1/solana/" + mints.join(","), { cache: "no-store" });
+      if (!r.ok) {
+        state.quoteNote = "Last quote poll returned HTTP " + r.status + ". The previous quote is unchanged.";
+        return;
+      }
+      const data = await r.json();
+      const receivedAt = Date.now() / 1000;
+      const pairs = Array.isArray(data) ? data : [];
+      let updated = 0;
+      mints.forEach((mint) => {
+        const row = opens.find((t) => t.mint === mint);
+        const held = state.quotes[mint];
+        const preferred = (row && row.pool) || (held && held.pair) || "";
+        const pair = Marks.pickPair(pairs, mint, preferred);
+        const quote = pair ? Marks.quoteFromPair(pair, mint, { requestedAt: requestedAt, receivedAt: receivedAt }) : null;
+        if (!quote) return;
+        state.quotes[mint] = quote;
+        const samples = state.sessionSamples[mint] || (state.sessionSamples[mint] = []);
+        const last = samples.length ? samples[samples.length - 1] : null;
+        if (!last || last.price !== quote.price) {
+          samples.push({ ts: receivedAt, price: quote.price, kind: "quote" });
+          if (samples.length > Marks.MAX_SAMPLES) samples.shift();
+        }
+        updated += 1;
+      });
+      state.quoteNote = updated ? "" : "This poll had no USD price for the open mint.";
+    } catch (e) {
+      state.quoteNote = "Quote poll did not connect. The previous quote is unchanged.";
+    } finally {
+      quoteInflight = false;
+      if (state.data) render();
+    }
+  }
+
   load();
   setInterval(load, 3000);
+  setInterval(pollQuotes, 30000);
 })();
