@@ -194,6 +194,7 @@
     return keyOf(v);
   }
   function tagHtml(t, s) {
+    if (root.BuddyCopy) { var ch = root.BuddyCopy.tagHtml(t); if (ch) return ch; }
     var n = tradeModeName(t);
     if (!n || RESERVED[n]) return "";
     var list = modesOf(s);

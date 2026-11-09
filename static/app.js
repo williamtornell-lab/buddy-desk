@@ -1127,6 +1127,16 @@
       box.hidden = false;
       return;
     }
+    if (action.type === "copy") {
+      title.textContent = action.on ? "Turn copy trading on?" : "Turn copy trading off?";
+      body.textContent = action.on
+        ? "PAPER only. Copies buys of the top FOMO traders: $20 each, max 5 open, sharing the paper balance. Runs alongside your trading mode. REAL stays alerts-only."
+        : "Stops new copies. Open copies still exit when the trader sells, or by stop, TP or 2 h.";
+      ok.textContent = action.on ? "Turn on" : "Turn off";
+      ok.classList.remove("danger");
+      box.hidden = false;
+      return;
+    }
     if (action.type === "sell") {
       title.textContent = "Sell " + (action.name || "this coin") + "?";
       body.textContent = "Paper close at the latest price.";
@@ -1168,6 +1178,16 @@
         if (sent) {
           BuddyStyles.markPending(name);
           showToast((action.label || name) + " sent · new trades only", false);
+          if (state.data) render();
+          window.setTimeout(load, 1500);
+        }
+        return;
+      }
+      if (action.type === "copy") {
+        const sent = await postDesk(action.on ? "copy:on" : "copy:off");
+        if (sent) {
+          if (window.BuddyCopy) BuddyCopy.markPending(action.on);
+          showToast(action.on ? "Copy trading on · PAPER" : "Copy trading off", false);
           if (state.data) render();
           window.setTimeout(load, 1500);
         }
@@ -1499,6 +1519,13 @@
       ["Reason", t.exit_reason ? (window.BuddyChart && BuddyChart.reasonLabel ? BuddyChart.reasonLabel(t.exit_reason) : labelize(t.exit_reason)) : ""],
       ["Mint", t.mint || ""]
     ];
+    if (window.BuddyCopy) {
+      const who = BuddyCopy.traderOf(t);
+      if (who) {
+        const lat = BuddyCopy.latencyOf(t);
+        rows.unshift(["Copied", "@" + who + (lat != null ? " · " + lat.toFixed(1) + "s after their buy" : "")]);
+      }
+    }
     const shown = rows.filter((pair) => pair[1]);
     $("#coinMeta").innerHTML = shown.map((pair) => {
       return "<div><dt>" + esc(pair[0]) + "</dt><dd>" + esc(pair[1]) + "</dd></div>";
@@ -1625,6 +1652,9 @@
     }
     if (window.BuddyStyles) {
       try { BuddyStyles.render(s); } catch (e) { /* modes are optional */ }
+    }
+    if (window.BuddyCopy) {
+      try { BuddyCopy.render(s); } catch (e) { /* copy card is optional */ }
     }
     if (window.BuddyDash) {
       try { BuddyDash.render(s, paperPerf, live); } catch (e) { /* dashboard is optional */ }
@@ -2036,9 +2066,13 @@
     BuddyStyles.hooks.requestSwitch = (a) => openDeskConfirm({ type: "style", name: a.name, label: a.label });
     BuddyStyles.hooks.toast = (t) => showToast(t, false);
   }
+  if (window.BuddyCopy) {
+    BuddyCopy.hooks.request = (on) => openDeskConfirm({ type: "copy", on: !!on });
+  }
   document.querySelector("main").addEventListener("click", (e) => {
     if (e.target.closest("a")) return;
     if (window.BuddyStyles && BuddyStyles.onClick(e, state.data)) return;
+    if (window.BuddyCopy && BuddyCopy.onClick(e, state.data)) return;
     const sell = e.target.closest("[data-sell]");
     if (sell) {
       openDeskConfirm({ type: "sell", mint: sell.dataset.sell, name: sell.dataset.sellName });

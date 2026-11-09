@@ -1569,3 +1569,42 @@ header { background: rgba(0, 0, 0, 0.92); }
 .live-dot[hidden] { display: none; }
 @keyframes liveBlink { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .live-dot.on::before { animation: none; } }
+
+/* Copy trading + Lessons (Nov 9) */
+.copy-card { padding-bottom: 10px; }
+.copy-card .dash-head { align-items: center; }
+.copy-toggle {
+  min-width: 54px; min-height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-strong);
+  background: rgba(255,255,255,0.05); color: var(--muted); font: inherit; font-size: 12px; font-weight: 760; letter-spacing: 0.02em;
+}
+.copy-toggle.on { background: var(--purple); border-color: transparent; color: #f8f5ff; box-shadow: 0 4px 14px rgba(139,92,246,0.28); }
+.copy-toggle:disabled { opacity: 0.6; }
+.copy-line { margin: 0 2px; font-size: 13px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.copy-sub { margin: 3px 2px 0; font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+.copy-traders { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 4px; }
+.copy-traders summary { cursor: pointer; font-size: 12px; font-weight: 720; color: var(--purple-soft); padding: 4px 2px; }
+.copy-list { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.cp-row { display: grid; grid-template-columns: 20px minmax(0,1fr) 54px 74px; gap: 6px; align-items: center;
+  font-size: 12px; padding: 3px 2px; font-variant-numeric: tabular-nums; }
+.cp-rank { color: var(--faint); font-weight: 700; text-align: right; }
+.cp-h { color: var(--text); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp-w { font-style: normal; color: var(--amber); font-size: 10.5px; }
+.cp-f { color: var(--muted); text-align: right; }
+.cp-p { text-align: right; font-weight: 700; }
+.cp-src { margin: 6px 2px 0; font-size: 10.5px; color: var(--faint); line-height: 1.35; }
+.style-tag.st-copy { color: #e9d5ff; background: rgba(192,132,252,0.14); border-color: rgba(192,132,252,0.3); text-transform: none; }
+.lessons-body { padding: 0 2px; }
+.ls-g { margin: 6px 0 2px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ls-g b { color: var(--text); font-weight: 760; margin-right: 4px; }
+.ls-tag { font-size: 10px; font-weight: 700; color: var(--amber); margin-left: 4px; }
+.ls-list { margin: 2px 0 4px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.ls-list li { position: relative; padding-left: 13px; font-size: 12px; line-height: 1.35; color: #d1d1d6; }
+.ls-list li::before { content: ""; position: absolute; left: 2px; top: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
+.ls-list li.ok::before { background: var(--green); }
+.ls-list li.bad::before { background: var(--red); }
+.ls-list li.chg::before { background: var(--purple-soft); }
+.ls-list li.sug::before { background: var(--amber); }
+.ls-sub { margin: 8px 0 2px; font-size: 10.5px; font-weight: 760; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+.ls-empty { margin: 2px 0; font-size: 12px; color: var(--faint); }
+.ls-when { color: var(--faint); font-size: 10.5px; }

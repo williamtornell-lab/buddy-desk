@@ -145,7 +145,7 @@
     });
   }
 
-  var REASONS = { tp: "Take profit", stop: "Stop", stop_loss: "Stop", timeout: "Timeout", trail: "Trail", trailing: "Trail",
+  var REASONS = { copy_mirror: "Trader sold (copy)", tp: "Take profit", stop: "Stop", stop_loss: "Stop", timeout: "Timeout", trail: "Trail", trailing: "Trail",
     pulled: "Pulled", liq_drop: "Liquidity drop", recover: "Recover cost", partial_tp: "Partial TP", manual: "Manual", close: "Manual", fade: "Fade" };
   function reasonLabel(r) {
     var k = String(r || "").toLowerCase();
