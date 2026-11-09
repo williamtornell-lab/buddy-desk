@@ -1542,6 +1542,9 @@
       const startBit = paperPerf.known ? "vs " + money(paperPerf.start) + " paper start" : "paper start not in this file yet";
       $("#pnlSub").textContent = "Night P&L " + startBit;
     }
+    if (window.BuddyDash) {
+      try { BuddyDash.render(s, paperPerf, live); } catch (e) { /* dashboard is optional */ }
+    }
     const updated = clock(s.ts);
     const prefix = (state.fixture || isDemoPreview()) ? "Demo · " : "";
     $("#updated").textContent = prefix + (updated ? "Updated " + updated : "Updated time unknown");
