@@ -1317,79 +1317,32 @@ body.demo-mode .real-bal { display: none !important; }
 }
 .restart-btn.dk-pill { color: var(--red); }
 
-/* v44 · Desk pipeline motion (overlay only; layout unchanged) */
+/* v45 · Desk pass: name turns green, then slides to next row */
 .dk-list { position: relative; }
-.dk-act.dk-swap-out {
-  opacity: 0;
-  transform: translateY(6px);
-  transition: opacity 320ms ease, transform 360ms cubic-bezier(.2,.7,.2,1), color 2.4s ease;
-}
-.dk-act.dk-swap-in {
-  animation: dk-act-in 380ms cubic-bezier(.2,.7,.2,1);
-}
-@keyframes dk-act-in {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.dk-row.dk-pulse-pass {
-  box-shadow: inset 0 0 0 0 transparent;
-  animation: dk-glow-pass 480ms ease-out;
-}
-.dk-row.dk-pulse-fail {
-  animation: dk-glow-fail 480ms ease-out;
-}
-@keyframes dk-glow-pass {
-  0% { background: transparent; }
-  35% { background: rgba(48, 209, 88, 0.10); }
-  100% { background: transparent; }
-}
-@keyframes dk-glow-fail {
-  0% { background: transparent; }
-  35% { background: rgba(255, 69, 58, 0.10); }
-  100% { background: transparent; }
-}
-.dk-ghost {
-  position: absolute;
-  z-index: 5;
-  pointer-events: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 8px 2px 3px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.14);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
-  font-size: 10.5px;
+.dk-act .dk-nm {
+  display: inline;
   font-weight: 760;
-  color: #e5e5ea;
+  transition: color 700ms ease;
+}
+.dk-act .dk-nm.pass {
+  color: #30d158;
+}
+.dk-slide {
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+  font-size: 11.5px;
+  font-weight: 760;
+  letter-spacing: -0.02em;
+  color: #30d158;
+  white-space: nowrap;
   transform: translateZ(0);
   will-change: transform, opacity;
-  opacity: 0.95;
-}
-.dk-ghost-logo {
-  width: 16px; height: 16px; border-radius: 50%;
-  display: grid; place-items: center;
-  background: linear-gradient(160deg, #2c2c32, #121214);
-  border: 1px solid rgba(255,255,255,0.12);
-  font-size: 8px; font-weight: 800; color: #c7c7cc;
-}
-.dk-ghost.ok { border-color: rgba(48,209,88,0.35); }
-.dk-ghost.fail { border-color: rgba(255,69,58,0.35); color: #e8c4c2; }
-.dk-pill.dk-tick { animation: dk-pill-tick 420ms ease; }
-@keyframes dk-pill-tick {
-  0% { transform: scale(1); }
-  40% { transform: scale(1.06); }
-  100% { transform: scale(1); }
+  opacity: 1;
 }
 @media (prefers-reduced-motion: reduce) {
-  .dk-act, .dk-act.dk-swap-out, .dk-act.dk-swap-in,
-  .dk-row.dk-pulse-pass, .dk-row.dk-pulse-fail,
-  .dk-ghost, .dk-pill.dk-tick {
-    animation: none !important;
-    transition: none !important;
-    transform: none !important;
-  }
+  .dk-act .dk-nm { transition: none !important; }
+  .dk-slide { display: none !important; }
 }
 
 

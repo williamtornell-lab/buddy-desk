@@ -70,12 +70,14 @@
     if (sub) sub.textContent = d.since_reset ? "since reset" : "";
   }
 
-  /* ---------- 3) desk agents (v42 layout + overlay motion) ---------- */
-  var PIPE_ORDER = ["scanner", "auditor", "analyst", "executor"]; /* buys end at executor, not risk */
-  var PIPE_IDX = { scanner: 0, auditor: 1, analyst: 2, executor: 3, risk: 3 };
-  var KIND_STAGE = { scan: "scanner", audit: "auditor", analyst: "analyst", buy: "executor", sell: "risk" };
-  var mintStage = {}; /* mint -> {stage, ok, symbol, ts} */
-  var pillSeen = {};
+  /* ---------- 3) desk agents (v42 look + pass name slide) ---------- */
+  var PIPE = ["scanner", "auditor", "analyst", "executor"];
+  var PIPE_NEXT = { scanner: "auditor", auditor: "analyst", analyst: "executor" };
+  var KIND_STAGE = { scan: "scanner", audit: "auditor", analyst: "analyst", buy: "executor" };
+  var mintLatest = {}; /* mint -> {stage, ok, symbol, ts} */
+  var animQueue = [];
+  var animBusy = false;
+  var holdUntil = {}; /* stage -> ts ms; freeze row text while name is sliding away */
   var reduceMotion = false;
   try { reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e0) {}
 
@@ -86,117 +88,183 @@
     return "ok";
   }
 
-  function letterMark(sym) {
-    var s = cleanSym(sym) || "?";
-    return s.charAt(0);
+  function actHtml(sym, text) {
+    var s = cleanSym(sym);
+    var rest = String(text || "");
+    if (s) {
+      return '<span class="dk-nm">$' + esc(s) + "</span> " + esc(rest);
+    }
+    return esc(rest);
   }
 
-  function collectPipeEvents(s) {
-    var events = [], have = {};
-    function push(ev) {
-      if (!ev || !ev.mint) return;
-      var stage = ev.stage;
-      if (stage === "risk") stage = "executor"; /* bought/sold ghosts land on executor for travel end */
-      if (PIPE_IDX[stage] == null && stage !== "executor") return;
-      if (stage === "risk") return;
-      var key = stage + "|" + ev.mint + "|" + Math.round((num(ev.ts) || 0) * 5);
+  function collectPasses(s) {
+    var out = [], have = {};
+    function push(stage, mint, symbol, ok, ts) {
+      if (!mint || !stage || PIPE.indexOf(stage) < 0) return;
+      if (!ok) return; /* rejects: no animation */
+      var key = stage + "|" + mint + "|" + Math.round((num(ts) || 0));
       if (have[key]) return;
       have[key] = 1;
-      events.push({
-        mint: String(ev.mint),
-        symbol: cleanSym(ev.symbol) || String(ev.mint).slice(0, 4).toUpperCase(),
-        stage: stage === "risk" ? "executor" : stage,
-        ok: !!ev.ok,
-        ts: num(ev.ts) || 0
-      });
+      out.push({ stage: stage, mint: String(mint), symbol: cleanSym(symbol) || String(mint).slice(0, 4).toUpperCase(), ok: true, ts: num(ts) || 0 });
     }
     var livePipe = Array.isArray(s.pipeline) ? s.pipeline
       : (s.dashboard && Array.isArray(s.dashboard.pipeline) ? s.dashboard.pipeline : null);
     if (livePipe) livePipe.forEach(function (e) {
-      var st = e.stage;
-      /* Buy path ends at executor; ignore risk as a travel destination. */
-      if (st === "risk") return;
-      push({ mint: e.mint, symbol: e.symbol, stage: st, ok: e.ok !== false && e.ok !== 0, ts: e.ts });
+      if (e.stage === "risk") return;
+      push(e.stage, e.mint, e.symbol, e.ok !== false && e.ok !== 0, e.ts);
     });
     var d = s.dashboard || {};
     (Array.isArray(d.log) ? d.log : []).forEach(function (r) {
       if (r.agent === "risk") return;
-      if (PIPE_IDX[r.agent] == null) return;
-      push({ mint: r.mint, symbol: r.symbol, stage: r.agent, ok: r.tone === "pass" || r.tone === "buy", ts: r.ts });
+      if (r.tone !== "pass" && r.tone !== "buy") return;
+      push(r.agent, r.mint, r.symbol, true, r.ts);
     });
     (Array.isArray(s.activity) ? s.activity : []).forEach(function (a) {
       var stage = KIND_STAGE[a.kind];
-      if (!stage || stage === "risk") return;
+      if (!stage) return;
       var title = String(a.title || "");
-      var fail = /^killed|^rejected/i.test(title);
-      push({ mint: a.mint, symbol: "", stage: stage, ok: !fail, ts: a.ts });
+      if (/^killed|^rejected/i.test(title)) return;
+      push(stage, a.mint, "", true, a.ts);
     });
-    events.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
-    return events;
+    out.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+    return out;
   }
 
   function rowEl(host, key) {
     return host.querySelector('.dk-row[data-agent="' + key + '"]');
   }
 
-  function pulseRow(row, ok) {
-    if (!row || reduceMotion) return;
-    row.classList.remove("dk-pulse-pass", "dk-pulse-fail");
-    void row.offsetWidth;
-    row.classList.add(ok ? "dk-pulse-pass" : "dk-pulse-fail");
-    window.setTimeout(function () { row.classList.remove("dk-pulse-pass", "dk-pulse-fail"); }, 520);
-  }
-
-  function flyGhost(host, fromKey, toKey, symbol, ok) {
-    if (reduceMotion || !host) return;
-    var from = rowEl(host, fromKey);
-    var to = rowEl(host, toKey);
-    if (!from || !to) return;
-    var fr = from.getBoundingClientRect();
-    var tr = to.getBoundingClientRect();
-    var hr = host.getBoundingClientRect();
-    var ghost = document.createElement("div");
-    ghost.className = "dk-ghost " + (ok ? "ok" : "fail");
-    ghost.innerHTML = '<span class="dk-ghost-logo">' + esc(letterMark(symbol)) + "</span><span>$" + esc(cleanSym(symbol) || "?") + "</span>";
-    var x0 = fr.left - hr.left + 70;
-    var y0 = fr.top - hr.top + fr.height / 2 - 12;
-    var x1 = tr.left - hr.left + 70;
-    var y1 = tr.top - hr.top + tr.height / 2 - 12;
-    ghost.style.left = x0 + "px";
-    ghost.style.top = y0 + "px";
-    host.appendChild(ghost);
-    void ghost.offsetWidth;
-    ghost.style.transition = "transform 440ms cubic-bezier(.2,.7,.2,1), opacity 440ms ease";
-    ghost.style.transform = "translate(" + (x1 - x0) + "px," + (y1 - y0) + "px)";
-    ghost.style.opacity = "0";
-    window.setTimeout(function () { if (ghost.parentNode) ghost.parentNode.removeChild(ghost); }, 480);
-  }
-
-  function animatePipe(host, s) {
-    if (!host || firstPaint) {
-      collectPipeEvents(s).forEach(function (e) {
-        if (!mintStage[e.mint] || e.ts >= mintStage[e.mint].ts) mintStage[e.mint] = e;
-      });
+  function runQueue() {
+    if (animBusy || !animQueue.length) return;
+    animBusy = true;
+    var job = animQueue.shift();
+    var host = $("#deskAgents");
+    if (!host || reduceMotion) {
+      animBusy = false;
+      runQueue();
       return;
     }
-    var events = collectPipeEvents(s);
+    var from = rowEl(host, job.from);
+    var to = rowEl(host, job.to);
+    if (!from || !to) {
+      animBusy = false;
+      runQueue();
+      return;
+    }
+    var act = from.querySelector(".dk-act");
+    var nm = act && act.querySelector(".dk-nm");
+    var label = "$" + (cleanSym(job.symbol) || "?");
+
+    function finish() {
+      holdUntil[job.from] = 0;
+      animBusy = false;
+      runQueue();
+    }
+
+    /* 1) Name turns green */
+    if (nm && cleanSym(nm.textContent.replace(/^\$/, "")) === cleanSym(job.symbol)) {
+      nm.classList.add("pass");
+    } else if (act) {
+      /* ensure name span exists for this symbol briefly */
+      act.innerHTML = actHtml(job.symbol, job.rest || "");
+      nm = act.querySelector(".dk-nm");
+      if (nm) nm.classList.add("pass");
+    }
+    holdUntil[job.from] = Date.now() + 2000;
+
+    window.setTimeout(function () {
+      host = $("#deskAgents");
+      from = host && rowEl(host, job.from);
+      to = host && rowEl(host, job.to);
+      if (!host || !from || !to) { finish(); return; }
+      act = from.querySelector(".dk-act");
+      nm = act && act.querySelector(".dk-nm");
+      var fr = (nm || act || from).getBoundingClientRect();
+      var toAct = to.querySelector(".dk-act");
+      var tr = (toAct || to).getBoundingClientRect();
+      var hr = host.getBoundingClientRect();
+
+      var slide = document.createElement("span");
+      slide.className = "dk-slide";
+      slide.textContent = label;
+      slide.style.left = (fr.left - hr.left) + "px";
+      slide.style.top = (fr.top - hr.top) + "px";
+      host.appendChild(slide);
+
+      /* Name leaves this row; live text resumes on next state tick (Scanner cycles scans). */
+      holdUntil[job.from] = 0;
+      if (act) {
+        if (job.from === "scanner") {
+          act.innerHTML = esc("scanning…");
+          act.className = "dk-act tone-idle";
+        } else {
+          /* hide name while the green slide travels; rest of line stays */
+          var rest = "";
+          if (nm && nm.nextSibling) rest = String(nm.nextSibling.textContent || "").trim();
+          act.innerHTML = esc(rest);
+          act.className = "dk-act tone-idle";
+        }
+      }
+
+      void slide.offsetWidth;
+      var dx = (tr.left - hr.left) - (fr.left - hr.left);
+      var dy = (tr.top - hr.top) - (fr.top - hr.top);
+      slide.style.transition = "transform 750ms ease-in-out, opacity 750ms ease-in-out";
+      slide.style.transform = "translate(" + dx + "px," + dy + "px)";
+
+      window.setTimeout(function () {
+        /* Land name on destination row */
+        host = $("#deskAgents");
+        to = host && rowEl(host, job.to);
+        if (to) {
+          var dest = to.querySelector(".dk-act");
+          if (dest) {
+            var infoRest = job.toRest || "";
+            dest.innerHTML = actHtml(job.symbol, infoRest);
+            dest.className = "dk-act tone-pass";
+            var landed = dest.querySelector(".dk-nm");
+            if (landed) landed.classList.add("pass");
+            window.setTimeout(function () {
+              if (landed) landed.classList.remove("pass");
+            }, 500);
+          }
+        }
+        if (slide.parentNode) slide.parentNode.removeChild(slide);
+        finish();
+      }, 780);
+    }, 700);
+  }
+
+  function enqueuePass(fromStage, toStage, symbol, rest, toRest) {
+    if (!fromStage || !toStage || !symbol) return;
+    /* drop duplicates at tail */
+    var last = animQueue[animQueue.length - 1];
+    if (last && last.from === fromStage && last.to === toStage && last.symbol === symbol) return;
+    if (animBusy && animQueue.length > 6) animQueue.shift();
+    animQueue.push({ from: fromStage, to: toStage, symbol: symbol, rest: rest || "", toRest: toRest || "" });
+    runQueue();
+  }
+
+  function notePasses(s) {
+    var events = collectPasses(s);
     events.forEach(function (e) {
-      var prev = mintStage[e.mint];
-      mintStage[e.mint] = e;
-      if (!prev) {
-        if (e.stage === "scanner") pulseRow(rowEl(host, "scanner"), e.ok);
-        return;
-      }
+      var prev = mintLatest[e.mint];
+      mintLatest[e.mint] = e;
+      if (firstPaint || reduceMotion) return;
+      if (!prev) return;
       if (prev.stage === e.stage) return;
-      var fromI = PIPE_IDX[prev.stage];
-      var toI = PIPE_IDX[e.stage];
-      if (fromI == null || toI == null || toI <= fromI) {
-        pulseRow(rowEl(host, e.stage), e.ok);
+      var fromI = PIPE.indexOf(prev.stage);
+      var toI = PIPE.indexOf(e.stage);
+      if (fromI < 0 || toI < 0 || toI !== fromI + 1) {
+        /* only animate adjacent hops; multi-hop: enqueue stepwise */
+        if (fromI >= 0 && toI > fromI) {
+          for (var i = fromI; i < toI; i++) {
+            enqueuePass(PIPE[i], PIPE[i + 1], e.symbol || prev.symbol, "", "");
+          }
+        }
         return;
       }
-      /* Travel one hop at a time visually: from previous stage to this stage. */
-      flyGhost(host, prev.stage, e.stage, e.symbol || prev.symbol, e.ok);
-      pulseRow(rowEl(host, e.stage), e.ok);
+      enqueuePass(prev.stage, e.stage, e.symbol || prev.symbol, "", "");
     });
   }
 
@@ -212,116 +280,57 @@
     $("#deskTitle").textContent = "Desk · " + list.length + " agents";
     $("#deskCounts").textContent = (num(d.scanned) || 0) + " scanned · " + (num(d.traded) || 0) + " traded";
 
-    var sig = list.map(function (a) { return a.key; }).join(",");
-    var needRebuild = host.getAttribute("data-agent-sig") !== sig || !host.querySelector(".dk-row");
+    notePasses(s);
 
-    function rowHtml(a) {
+    var now = Date.now();
+    var html = list.map(function (a) {
       var info = dash[a.key] || {};
       var tone = agentTone(hb[a.key]);
       var sym = cleanSym(info.symbol);
-      var txt = (sym ? "$" + sym + " " : "") + (info.text || "");
-      var key = a.key + "|" + (info.ts || "") + "|" + txt;
+      var txt = info.text || "";
+      var key = a.key + "|" + (info.ts || "") + "|" + sym + "|" + txt;
       var fresh = !firstPaint && seen[a.key] !== undefined && seen[a.key] !== key;
       seen[a.key] = key;
       var stale = tone === "bad";
       var age = hb[a.key] ? num(hb[a.key].age_s) : null;
       var status = stale ? (hb[a.key] && hb[a.key].paused ? "paused" : (age == null ? "no heartbeat" : "stale")) : a.sub;
+      /* While a pass-slide is in flight from this row, keep scanner free to show live scans;
+         for other rows, skip overwriting destination mid-slide only briefly. */
+      var holding = (holdUntil[a.key] || 0) > now;
+      var body;
+      if (holding && a.key !== "scanner") {
+        body = null; /* preserve via rebuild avoidance — fall through to full html still, but mark */
+      }
+      var actInner = actHtml(sym, txt);
       return '<div class="dk-row' + (stale ? " stale" : "") + '" data-agent="' + esc(a.key) + '">' +
         '<span class="dk-icon" style="--c:' + a.color + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + a.icon + "</svg>" +
         '<i class="dk-dot ' + tone + '"></i></span>' +
         '<span class="dk-name"><b>' + esc(a.name) + '</b><small>' + esc(status) + "</small></span>" +
         '<span class="dk-act tone-' + esc(info.tone || "idle") + (fresh ? " flash" : "") + '"' +
-        (info.mint ? ' data-mint="' + esc(info.mint) + '"' : "") + ' data-actkey="' + esc(key) + '">' + esc(txt) + "</span>" +
+        (info.mint ? ' data-mint="' + esc(info.mint) + '"' : "") +
+        (holding ? ' data-hold="1"' : "") + ">" + actInner + "</span>" +
         (stale
           ? '<button type="button" class="restart-btn need dk-pill" data-restart="' + esc(a.key) + '">Restart</button>'
           : '<span class="dk-pill" style="--c:' + a.color + '">' + esc(info.pill || "") + "</span>") +
         "</div>";
-    }
+    }).join("");
 
-    if (needRebuild) {
-      host.innerHTML = list.map(rowHtml).join("") || '<p class="quiet">No agent data yet.</p>';
-      host.setAttribute("data-agent-sig", sig);
-      list.forEach(function (a) {
-        var info = dash[a.key] || {};
-        pillSeen[a.key] = info.pill || "";
-      });
-    } else {
-      list.forEach(function (a) {
+    /* Preserve in-flight slide overlay and held destination text across re-renders */
+    var slides = Array.prototype.slice.call(host.querySelectorAll(".dk-slide"));
+    var held = {};
+    list.forEach(function (a) {
+      if ((holdUntil[a.key] || 0) > now) {
         var row = rowEl(host, a.key);
-        if (!row) return;
-        var info = dash[a.key] || {};
-        var tone = agentTone(hb[a.key]);
-        var stale = tone === "bad";
-        var age = hb[a.key] ? num(hb[a.key].age_s) : null;
-        var status = stale ? (hb[a.key] && hb[a.key].paused ? "paused" : (age == null ? "no heartbeat" : "stale")) : a.sub;
-        var sym = cleanSym(info.symbol);
-        var txt = (sym ? "$" + sym + " " : "") + (info.text || "");
-        var key = a.key + "|" + (info.ts || "") + "|" + txt;
-        row.classList.toggle("stale", stale);
-        var dot = row.querySelector(".dk-dot");
-        if (dot) dot.className = "dk-dot " + tone;
-        var small = row.querySelector(".dk-name small");
-        if (small) small.textContent = status;
-
-        var act = row.querySelector(".dk-act");
-        if (act) {
-          var prevKey = act.getAttribute("data-actkey") || "";
-          if (prevKey !== key) {
-            var apply = function () {
-              act.className = "dk-act tone-" + (info.tone || "idle") + (reduceMotion ? "" : " dk-swap-in");
-              act.textContent = txt;
-              act.setAttribute("data-actkey", key);
-              if (info.mint) act.setAttribute("data-mint", info.mint); else act.removeAttribute("data-mint");
-              if (!reduceMotion) window.setTimeout(function () { act.classList.remove("dk-swap-in"); }, 400);
-            };
-            if (!reduceMotion && prevKey) {
-              act.classList.add("dk-swap-out");
-              window.setTimeout(apply, 160);
-            } else apply();
-          } else {
-            act.className = "dk-act tone-" + (info.tone || "idle");
-          }
-        }
-
-        var pillSlot = row.querySelector(".dk-pill, .restart-btn.dk-pill");
-        var pillText = info.pill || "";
-        if (stale) {
-          if (!pillSlot || !pillSlot.classList.contains("restart-btn")) {
-            var btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "restart-btn need dk-pill";
-            btn.setAttribute("data-restart", a.key);
-            btn.textContent = "Restart";
-            if (pillSlot) row.replaceChild(btn, pillSlot); else row.appendChild(btn);
-          }
-        } else {
-          if (!pillSlot || pillSlot.classList.contains("restart-btn")) {
-            var sp = document.createElement("span");
-            sp.className = "dk-pill";
-            sp.style.setProperty("--c", a.color);
-            sp.textContent = pillText;
-            if (pillSlot) row.replaceChild(sp, pillSlot); else row.appendChild(sp);
-            pillSlot = sp;
-          } else {
-            if (pillSeen[a.key] !== pillText) {
-              pillSlot.textContent = pillText;
-              if (!reduceMotion) {
-                pillSlot.classList.remove("dk-tick");
-                void pillSlot.offsetWidth;
-                pillSlot.classList.add("dk-tick");
-              }
-            } else {
-              pillSlot.textContent = pillText;
-            }
-            pillSlot.style.setProperty("--c", a.color);
-          }
-          pillSeen[a.key] = pillText;
-        }
-        seen[a.key] = key;
-      });
-    }
-
-    animatePipe(host, s);
+        var act = row && row.querySelector(".dk-act");
+        if (act) held[a.key] = act.innerHTML;
+      }
+    });
+    host.innerHTML = html || '<p class="quiet">No agent data yet.</p>';
+    Object.keys(held).forEach(function (k) {
+      var act = host.querySelector('.dk-row[data-agent="' + k + '"] .dk-act');
+      if (act) act.innerHTML = held[k];
+    });
+    slides.forEach(function (el) { host.appendChild(el); });
   }
 
   /* ---------- 4) logger ---------- */
