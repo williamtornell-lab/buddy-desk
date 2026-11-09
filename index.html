@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=22"/>
+<link rel="stylesheet" href="static/app.css?v=24"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -97,7 +97,11 @@
           <h2 id="openHeading">Open trades</h2>
           <span id="openCount" class="muted"></span>
         </div>
-        <p id="openMarks" class="caption"></p>
+        <p id="openMarks" class="open-total"></p>
+        <details class="pricing-details">
+          <summary>Pricing details</summary>
+          <p>Entry is the simulated paper fill, or the weighted average when a position has one. It is not a market print. Now is the public DexScreener USD price for that mint, read every 30 seconds. The response is cached about 30 seconds and has no trade time, so the exchange clock is unverified. This is not a tick stream. Gain uses the ticket as cost when the entry fee is not stored, so it is gross of that fee and is not a net profit. A missing quote stays unknown.</p>
+        </details>
         <div id="positions" class="sheet"></div>
       </section>
 
@@ -145,7 +149,7 @@
       <div id="agentCards" class="agents"></div>
       <details class="settings">
         <summary>Settings</summary>
-        <p class="hint">Read-only on Plan B. Change them in Telegram with Buddy.</p>
+        <button type="button" class="restart-btn" data-reset-paper="200">Reset paper</button>
         <pre id="settingsBox"></pre>
       </details>
       <p class="foot">
@@ -208,6 +212,6 @@
   </div>
 </div>
 <script src="static/marks.js?v=1"></script>
-<script src="static/app.js?v=24"></script>
+<script src="static/app.js?v=26"></script>
 </body>
 </html>
