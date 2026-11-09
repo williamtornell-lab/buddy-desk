@@ -281,6 +281,8 @@
     }
     return {
       mint: p.mint || "",
+      pos_key: p.pos_key || undefined,
+      sub_bot: p.sub_bot || undefined,
       name: p.name || coin.name || "",
       symbol: p.symbol || coin.symbol || "",
       side_or_status: side,
@@ -1119,6 +1121,14 @@
     const body = $("#modeConfirmBody");
     const ok = $("#modeConfirmOk");
     if (!box || !title || !body || !ok) return;
+    if (action.type === "cmd") {
+      title.textContent = action.title || "Confirm?";
+      body.textContent = action.body || "";
+      ok.textContent = action.ok || "Confirm";
+      ok.classList.toggle("danger", !!action.danger);
+      box.hidden = false;
+      return;
+    }
     if (action.type === "style") {
       title.textContent = "Switch to " + (action.label || action.name) + "?";
       body.textContent = "Applies to new trades only. Open trades keep the rules they were opened with. PAPER fills only; REAL stays alerts-only.";
@@ -1182,6 +1192,20 @@
 
   async function runDesk(action) {
     try {
+      if (action.type === "cmd") {
+        let sent = 0;
+        for (const c of action.cmds || []) {
+          if (await postDesk(c)) sent += 1;
+          if ((action.cmds || []).length > 1) await new Promise((r) => setTimeout(r, 350));
+        }
+        if (sent) {
+          if (typeof action.after === "function") action.after();
+          showToast(action.toast || "Sent", false);
+          if (state.data) render();
+          window.setTimeout(load, 2000);
+        }
+        return;
+      }
       if (action.type === "style") {
         const name = String(action.name || "").toLowerCase();
         if (!name || !window.BuddyStyles || BuddyStyles.RESERVED[name] || !/^[a-z0-9_]+$/.test(name)) return;
@@ -1685,6 +1709,7 @@
     }
     if (window.BuddyCopy) {
       try { BuddyCopy.render(s); } catch (e) { /* copy card is optional */ }
+      try { if (window.BuddySettings) BuddySettings.render(s); } catch (e) { /* settings tab is optional */ }
     }
     if (window.BuddyDash) {
       try { BuddyDash.render(s, paperPerf, live); } catch (e) { /* dashboard is optional */ }
@@ -2099,6 +2124,23 @@
   if (window.BuddyCopy) {
     BuddyCopy.hooks.request = (on) => openDeskConfirm({ type: "copy", on: !!on });
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
+    if (window.BuddySettings) {
+      BuddySettings.hooks.version = "app v38";
+      BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
+      BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
+      BuddySettings.hooks.openKeys = () => {
+        const s = state.data || {};
+        return (Array.isArray(s.positions) ? s.positions : [])
+          .filter((p) => p && !isFomoRow(p) && !/FOMO|REAL|WALLET|LIVE/i.test(String(p.mode || "PAPER")) && String(p.status || "open") === "open")
+          .map((p) => p.pos_key || p.mint).filter(Boolean);
+      };
+      BuddySettings.hooks.liveText = () => {
+        const d = $("#liveDot"), u = $("#updated");
+        const on = d && !d.hidden ? (d.textContent || "").trim() : "";
+        return [on || "Polling", u ? (u.textContent || "").trim() : ""].filter(Boolean).join(" · ");
+      };
+      document.addEventListener("input", (e) => { BuddySettings.onInput(e, state.data); });
+    }
   }
   if (window.BuddyAdaptive) {
     BuddyAdaptive.hooks.post = async (level) => {
@@ -2119,6 +2161,7 @@
     if (e.target.closest("a")) return;
     if (window.BuddyStyles && BuddyStyles.onClick(e, state.data)) return;
     if (window.BuddyCopy && BuddyCopy.onClick(e, state.data)) return;
+    if (window.BuddySettings && BuddySettings.onClick(e, state.data)) return;
     if (window.BuddyAdaptive && BuddyAdaptive.onClick(e, state.data)) return;
     const sell = e.target.closest("[data-sell]");
     if (sell) {

@@ -1652,3 +1652,36 @@ header { background: rgba(0, 0, 0, 0.92); }
 .cr-switch.mini { width: 36px; height: 21px; }
 .cr-switch.mini .cr-knob { width: 15px; height: 15px; }
 .cr-switch.mini.on .cr-knob { transform: translateX(15px); }
+
+/* Settings tab */
+.set-body { display: flex; flex-direction: column; gap: 10px; }
+.set-card { padding-top: 12px; padding-bottom: 10px; }
+.set-card .dash-head { margin-bottom: 4px; }
+.set-pill { font-size: 11px; font-weight: 760; letter-spacing: 0.06em; padding: 4px 10px; border-radius: 999px;
+  color: #f8f5ff; background: var(--purple); }
+.set-pill.real { background: rgba(255,159,10,0.18); color: var(--amber); }
+.set-row { display: flex; align-items: center; gap: 10px; min-height: 42px; border-top: 1px solid var(--line); }
+.set-card .set-row:first-of-type, .set-group + .set-row { border-top: 0; }
+.set-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.set-name { font-size: 14px; font-weight: 680; color: var(--text); }
+.set-sub { font-size: 12.5px; color: var(--muted); }
+.set-sub.bad { color: var(--red, #ff453a); }
+.set-val { font-size: 13px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.set-group { margin: 10px 0 0; font-size: 12px; font-weight: 720; color: var(--muted); }
+.stp { display: flex; align-items: center; gap: 6px; flex: none; }
+.stp button { width: 32px; height: 30px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,0.05);
+  color: var(--text); font: inherit; font-size: 17px; line-height: 1; cursor: pointer; }
+.stp button:disabled { opacity: 0.3; }
+.stp-v { min-width: 66px; text-align: center; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stp-v.changed { color: var(--purple-soft); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
+.chip { min-height: 32px; padding: 0 13px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,0.04);
+  color: var(--text); font: inherit; font-size: 13px; font-weight: 680; cursor: pointer; }
+.chip.on { background: var(--purple); border-color: var(--purple); color: #f8f5ff; }
+.chip-in { width: 92px; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,0.04);
+  color: var(--text); font: inherit; font-size: 13px; }
+.set-btn { display: block; width: 100%; margin-top: 8px; min-height: 38px; border: 0; border-radius: 12px; background: var(--purple);
+  color: #f8f5ff; font: inherit; font-size: 13.5px; font-weight: 740; cursor: pointer; }
+.set-btn:disabled { opacity: 0.4; }
+.set-btn.ghost { background: rgba(255,255,255,0.06); color: var(--text); }
+.set-btn.danger { background: rgba(255,69,58,0.16); color: #ff6961; }
