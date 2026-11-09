@@ -67,19 +67,7 @@
     tw($("#multX"), x, function (v) { return Number(v).toFixed(2) + "x"; });
     tw($("#multW"), w, function (v) { return String(Math.round(v)); });
     tw($("#multL"), l, function (v) { return String(Math.round(v)); });
-    if (sub) {
-      var set = s.settings || {};
-      var bits = ["Equity", money(perf.start) + (d.since_reset ? " at reset" : " start")];
-      var styleSize = "";
-      if (root.BuddyStyles) {
-        var ml = root.BuddyStyles.modesOf(s);
-        styleSize = root.BuddyStyles.sizeText(root.BuddyStyles.activeOf(s, ml));
-      }
-      var tk = num(set.min_ticket_usd);
-      if (styleSize) bits.push(styleSize);
-      else if (tk != null) bits.push(money(tk).replace(".00", "") + " size");
-      sub.textContent = bits.join(" · ");
-    }
+    if (sub) sub.textContent = d.since_reset ? "since reset" : "";
   }
 
   /* ---------- 3) desk agents ---------- */

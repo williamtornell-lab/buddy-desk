@@ -4,7 +4,10 @@
 (function (root) {
   "use strict";
   var UP = "#30d158", DOWN = "#ff453a", FLAT = "#30d158";
-  var W = 360, H = 96, PAD_T = 10, PAD_B = 8;
+  var W = 360, H = 96, PAD_T = 12, PAD_B = 12;
+  var X0 = 4, X_END = W * 0.82;   // line + dot end ~18% in from the right (room ahead)
+  var GAP_S = 180;                // idle gaps longer than 3 min are compressed to 3 min
+  var MAX_PTS = 90;
   var RANGES = { reset: 0, day: 86400, week: 7 * 86400, month: 30 * 86400, year: 365 * 86400 };
   var st = { range: "reset", seen: [], seenKey: "", drawn: null, anim: 0, series: [], start: null, since: null };
   var tweens = typeof WeakMap !== "undefined" ? new WeakMap() : null;
@@ -98,18 +101,65 @@
       if (head) out.unshift({ ts: cut, v: head.v });
     }
     if (out.length === 1) out.unshift({ ts: out[0].ts - 60, v: out[0].v });
+    out = tidy(out);
     return { pts: out, start: start, since: since };
+  }
+
+  /* Drop runs of identical values, bucket to <= MAX_PTS on compressed time and
+     lightly smooth interior points (first/last stay exact). */
+  function tidy(pts) {
+    if (pts.length <= 3) return pts;
+    var keep = [pts[0]];
+    for (var i = 1; i < pts.length - 1; i++) {
+      var a = keep[keep.length - 1], b = pts[i], c = pts[i + 1];
+      if (Math.abs(a.v - b.v) < 0.005 && Math.abs(b.v - c.v) < 0.005) continue;
+      keep.push(b);
+    }
+    keep.push(pts[pts.length - 1]);
+    if (keep.length > MAX_PTS) {
+      var cm = compress(keep), total = cm.c[cm.c.length - 1] || 1, step = total / (MAX_PTS - 1), out = [keep[0]], nextAt = step;
+      for (var j = 1; j < keep.length - 1; j++) {
+        if (cm.c[j] >= nextAt) { out.push(keep[j]); nextAt = cm.c[j] + step; }
+      }
+      out.push(keep[keep.length - 1]);
+      keep = out;
+    }
+    if (keep.length > 4) {
+      var sm = keep.map(function (p) { return { ts: p.ts, v: p.v }; });
+      for (var k = 1; k < keep.length - 1; k++) sm[k].v = keep[k - 1].v * 0.2 + keep[k].v * 0.6 + keep[k + 1].v * 0.2;
+      keep = sm;
+    }
+    return keep;
+  }
+
+  /* Compressed time: each gap counts at most GAP_S, so idle stretches don't eat the width. */
+  function compress(pts) {
+    var c = [0];
+    for (var i = 1; i < pts.length; i++) c.push(c[i - 1] + Math.min(GAP_S, Math.max(0, pts[i].ts - pts[i - 1].ts)));
+    return { ts: pts.map(function (p) { return p.ts; }), c: c };
   }
 
   function scale(pts, start) {
     var lo = Infinity, hi = -Infinity, t0 = pts[0].ts, t1 = pts[pts.length - 1].ts;
     pts.forEach(function (p) { lo = Math.min(lo, p.v); hi = Math.max(hi, p.v); });
     if (start != null) { lo = Math.min(lo, start); hi = Math.max(hi, start); }
-    if (hi - lo < 0.02) { var mid = (hi + lo) / 2; lo = mid - 1; hi = mid + 1; }
-    var pad = (hi - lo) * 0.14; lo -= pad; hi += pad;
-    var span = Math.max(1, t1 - t0);
+    var ref = start != null ? start : pts[0].v;
+    var minSpan = Math.max(2, Math.abs(ref) * 0.03);  // small moves stay small
+    if (hi - lo < minSpan) { var mid = (hi + lo) / 2; lo = mid - minSpan / 2; hi = mid + minSpan / 2; }
+    var pad = (hi - lo) * 0.18; lo -= pad; hi += pad;
+    var cm = compress(pts), total = Math.max(1, cm.c[cm.c.length - 1]);
+    function cOf(t) {
+      var ts = cm.ts, c = cm.c, n = ts.length;
+      if (t <= ts[0]) return 0;
+      if (t >= ts[n - 1]) return c[n - 1] + Math.min(GAP_S, t - ts[n - 1]);
+      var a = 0, b = n - 1;
+      while (b - a > 1) { var m = (a + b) >> 1; if (ts[m] <= t) a = m; else b = m; }
+      var g = ts[b] - ts[a];
+      return c[a] + (g > 0 ? (t - ts[a]) / g : 0) * (c[b] - c[a]);
+    }
     return {
-      x: function (t) { return 2 + ((t - t0) / span) * (W - 10); },
+      x: function (t) { return X0 + Math.min(1, cOf(t) / total) * (X_END - X0); },
+      base: start != null ? start : null,
       y: function (v) { return PAD_T + (1 - (v - lo) / (hi - lo)) * (H - PAD_T - PAD_B); },
       t0: t0, t1: t1
     };
@@ -149,18 +199,21 @@
     var color = tone === "down" ? DOWN : tone === "up" ? UP : FLAT;
     var line = pathFor(xy);
     var area = line + " L" + xy[xy.length - 1][0].toFixed(2) + " " + H + " L" + xy[0][0].toFixed(2) + " " + H + " Z";
+    var by = sc.y(ref);
     var svg = host.querySelector("svg");
     if (!svg) {
       host.innerHTML =
         '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" aria-hidden="true">' +
         '<defs><linearGradient id="spFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="sp-s0"/><stop offset="1" class="sp-s1"/></linearGradient>' +
         '<filter id="spGlow" filterUnits="userSpaceOnUse" x="-20" y="-20" width="' + (W + 40) + '" height="' + (H + 40) + '"><feGaussianBlur stdDeviation="2.6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>' +
-        '<path class="sp-area" fill="url(#spFill)"/><path class="sp-line" fill="none" filter="url(#spGlow)"/></svg>' +
+        '<line class="sp-base" x1="0" x2="' + W + '"/><path class="sp-area" fill="url(#spFill)"/><path class="sp-line" fill="none" filter="url(#spGlow)"/></svg>' +
         '<span class="sp-dot"><i></i></span><span class="sp-cross" hidden></span><span class="sp-tip" hidden></span>';
       svg = host.querySelector("svg");
     }
     host.style.setProperty("--sp", color);
     host.className = "spark " + tone;
+    var bl = svg.querySelector(".sp-base");
+    if (bl) { bl.setAttribute("y1", by.toFixed(2)); bl.setAttribute("y2", by.toFixed(2)); }
     svg.querySelector(".sp-area").setAttribute("d", area);
     svg.querySelector(".sp-line").setAttribute("d", line);
     var dot = host.querySelector(".sp-dot");
