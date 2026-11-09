@@ -167,6 +167,12 @@
       var fresh = snap.activity.filter(function (a) { return a.id != null && !ids[a.id]; });
       if (fresh.length) out.activity = fresh.concat(s.activity).slice(0, 120);
     }
+    if (Array.isArray(snap.pipeline)) {
+      out.pipeline = snap.pipeline;
+      if (out.dashboard && typeof out.dashboard === "object") {
+        out.dashboard = Object.assign({}, out.dashboard, { pipeline: snap.pipeline });
+      }
+    }
     return out;
   }
 
