@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=30"/>
+<link rel="stylesheet" href="static/app.css?v=31"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -87,6 +87,15 @@
         <p id="copyLine" class="copy-line"></p>
         <p id="copySub" class="copy-sub"></p>
         <details class="copy-traders"><summary id="copySummary">Traders</summary><div id="copyList" class="copy-list"></div></details>
+      </section>
+
+      <section id="adaptiveCard" class="dash-card adaptive-card" aria-labelledby="adaptiveTitle" hidden>
+        <div class="dash-head"><h2 id="adaptiveTitle">Adaptive</h2><span id="adaptiveStatus" class="ad-pill off">No edge yet</span></div>
+        <p id="adaptiveLine" class="copy-line"></p>
+        <p id="adaptiveSub" class="copy-sub"></p>
+        <div id="adaptiveTest" class="ad-test"></div>
+        <div id="adaptiveConv" class="ad-convs" role="group" aria-label="Adaptive conviction"></div>
+        <div id="adaptiveCands" class="ad-cands"></div>
       </section>
 
       <section id="lessonsCard" class="dash-card lessons-card" aria-labelledby="lessonsTitle" hidden>
@@ -257,11 +266,12 @@
 <script src="static/lwc-4.2.3.js"></script>
 <script src="static/marks.js?v=1"></script>
 <script src="static/dexchart.js?v=3"></script>
-<script src="static/styles.js?v=2"></script>
+<script src="static/styles.js?v=3"></script>
 <script src="static/spark.js?v=1"></script>
-<script src="static/dash.js?v=3"></script>
+<script src="static/dash.js?v=4"></script>
 <script src="static/live.js?v=1"></script>
 <script src="static/copy.js?v=1"></script>
-<script src="static/app.js?v=32"></script>
+<script src="static/adaptive.js?v=1"></script>
+<script src="static/app.js?v=33"></script>
 </body>
 </html>

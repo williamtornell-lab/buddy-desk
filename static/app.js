@@ -1653,6 +1653,9 @@
     if (window.BuddyStyles) {
       try { BuddyStyles.render(s); } catch (e) { /* modes are optional */ }
     }
+    if (window.BuddyAdaptive) {
+      try { BuddyAdaptive.render(s); } catch (e) { /* adaptive card is optional */ }
+    }
     if (window.BuddyCopy) {
       try { BuddyCopy.render(s); } catch (e) { /* copy card is optional */ }
     }
@@ -2069,10 +2072,26 @@
   if (window.BuddyCopy) {
     BuddyCopy.hooks.request = (on) => openDeskConfirm({ type: "copy", on: !!on });
   }
+  if (window.BuddyAdaptive) {
+    BuddyAdaptive.hooks.post = async (level) => {
+      try {
+        const sent = await postDesk("adaptive:" + level);
+        if (sent) {
+          showToast("Adaptive conviction → " + level.charAt(0).toUpperCase() + level.slice(1) + " · retrains now", false);
+          if (state.data) render();
+          window.setTimeout(load, 1500);
+        } else BuddyAdaptive.clearPending();
+      } catch (err) {
+        BuddyAdaptive.clearPending();
+        showErr("Desk command failed");
+      }
+    };
+  }
   document.querySelector("main").addEventListener("click", (e) => {
     if (e.target.closest("a")) return;
     if (window.BuddyStyles && BuddyStyles.onClick(e, state.data)) return;
     if (window.BuddyCopy && BuddyCopy.onClick(e, state.data)) return;
+    if (window.BuddyAdaptive && BuddyAdaptive.onClick(e, state.data)) return;
     const sell = e.target.closest("[data-sell]");
     if (sell) {
       openDeskConfirm({ type: "sell", mint: sell.dataset.sell, name: sell.dataset.sellName });

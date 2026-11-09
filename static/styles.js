@@ -3,7 +3,7 @@
    that app.js wires to its confirm dialog; this file never posts anything itself. */
 (function (root) {
   "use strict";
-  var ORDER = ["scalping", "aggressive_short", "aggressive", "aggressive_short_term", "short_term", "long_term", "longterm", "passive"];
+  var ORDER = ["scalping", "aggressive_short", "aggressive", "aggressive_short_term", "short_term", "long_term", "longterm", "passive", "adaptive"];
   var RESERVED = { paper: 1, p: 1, live: 1, real: 1, l: 1, r: 1 };
   var RULE_LABEL = {
     entries: "Entries", entry: "Entry", size: "Size", size_usd: "Size", ticket: "Size", ticket_usd: "Size",
@@ -73,6 +73,7 @@
     if (/long/i.test(l)) return "Long term";
     if (/scalp/i.test(l)) return "Scalping";
     if (/passive/i.test(l)) return "Passive";
+    if (/adaptive/i.test(l)) return "Adaptive";
     return l.length > 12 ? l.slice(0, 11) + "…" : l;
   }
 
