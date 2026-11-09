@@ -1571,20 +1571,26 @@ header { background: rgba(0, 0, 0, 0.92); }
 @media (prefers-reduced-motion: reduce) { .live-dot.on::before { animation: none; } }
 
 /* Copy trading + Lessons (Nov 9) */
-.copy-card { padding-bottom: 10px; }
-.copy-card .dash-head { align-items: center; }
-.copy-toggle {
-  min-width: 54px; min-height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-strong);
-  background: rgba(255,255,255,0.05); color: var(--muted); font: inherit; font-size: 12px; font-weight: 760; letter-spacing: 0.02em;
-}
-.copy-toggle.on { background: var(--purple); border-color: transparent; color: #f8f5ff; box-shadow: 0 4px 14px rgba(139,92,246,0.28); }
-.copy-toggle:disabled { opacity: 0.6; }
-.copy-line { margin: 0 2px; font-size: 13px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.copy-sub { margin: 3px 2px 0; font-size: 11.5px; color: var(--muted); line-height: 1.35; }
-.copy-traders { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 4px; }
-.copy-traders summary { cursor: pointer; font-size: 12px; font-weight: 720; color: var(--purple-soft); padding: 4px 2px; }
-.copy-list { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.copy-row { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; }
+.copy-row[hidden], .cr-more[hidden] { display: none; }
+.cr-main { display: flex; align-items: center; gap: 10px; }
+.cr-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  padding: 2px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.cr-title { font-size: 13.5px; font-weight: 720; color: var(--text); letter-spacing: -0.01em; }
+.cr-title::after { content: ""; display: inline-block; width: 5px; height: 5px; margin: 0 0 2px 7px;
+  border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg); transition: transform .15s; }
+.cr-info.open .cr-title::after { transform: rotate(-135deg); margin-bottom: -1px; }
+.cr-sub { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cr-switch { position: relative; flex: 0 0 auto; width: 42px; height: 25px; padding: 0; border-radius: 999px; border: 0;
+  background: rgba(255,255,255,0.14); cursor: pointer; transition: background .18s; }
+.cr-knob { position: absolute; top: 3px; left: 3px; width: 19px; height: 19px; border-radius: 50%; background: #f5f5f7;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35); transition: transform .18s; }
+.cr-switch.on { background: var(--purple); }
+.cr-switch.on .cr-knob { transform: translateX(17px); }
+.cr-switch.busy { opacity: 0.6; }
+.cr-more { margin-top: 6px; }
+.cr-last { margin: 0 0 4px; font-size: 12px; color: var(--muted); }
+.copy-list { display: flex; flex-direction: column; gap: 1px; }
 .cp-row { display: grid; grid-template-columns: 20px minmax(0,1fr) 54px 74px; gap: 6px; align-items: center;
   font-size: 12px; padding: 3px 2px; font-variant-numeric: tabular-nums; }
 .cp-rank { color: var(--faint); font-weight: 700; text-align: right; }

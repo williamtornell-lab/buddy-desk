@@ -3,7 +3,7 @@
 (function (root) {
   "use strict";
   var hooks = { request: null };
-  var view = { pending: null, pendingAt: 0 };
+  var view = { pending: null, pendingAt: 0, open: false };
   function $(s) { return document.querySelector(s); }
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -46,44 +46,49 @@
     return h ? '<span class="style-tag st-copy">Copy @' + esc(h) + "</span>" : "";
   }
 
+  function openCopies(s) {
+    var n = 0;
+    (Array.isArray(s && s.positions) ? s.positions : []).forEach(function (p) {
+      if (p && String(p.status || "open") === "open" && traderOf(p)) n++;
+    });
+    return n;
+  }
+
   function renderCopy(s) {
-    var card = $("#copyCard");
-    if (!card) return;
+    var row = $("#copyCard");
+    if (!row) return;
     var c = s && s.copy;
-    if (!c || typeof c !== "object") { card.hidden = true; return; }
-    card.hidden = false;
+    if (!c || typeof c !== "object") { row.hidden = true; return; }
+    row.hidden = false;
     var on = !!c.enabled;
     if (view.pending != null && (view.pending === on || Date.now() - view.pendingAt > 90000)) view.pending = null;
-    var btn = $("#copyToggle");
     var shownOn = view.pending != null ? view.pending : on;
-    btn.textContent = view.pending != null ? "…" : (on ? "On" : "Off");
-    btn.className = "copy-toggle" + (shownOn ? " on" : "");
-    btn.setAttribute("aria-pressed", String(on));
+    var btn = $("#copyToggle");
+    btn.className = "cr-switch" + (shownOn ? " on" : "") + (view.pending != null ? " busy" : "");
+    btn.setAttribute("aria-checked", String(on));
     btn.disabled = view.pending != null;
-    var parts = [];
     var tracked = num(c.tracked) || 0;
-    parts.push(tracked + " FOMO traders");
-    if (on) parts.push(c.connected ? "watching live" : "connecting…");
-    else parts.push("paused");
-    if (num(c.copies)) parts.push(c.copies + " copied");
-    if (num(c.latency_median_s) != null) parts.push("~" + Number(c.latency_median_s).toFixed(1) + "s behind");
-    $("#copyLine").textContent = parts.join(" · ");
+    var bits = [tracked + " traders"];
+    if (on) bits.push(openCopies(s) + " open");
+    else bits.push("off");
+    $("#copyLine").textContent = bits.join(" · ");
+    var more = $("#copyMore");
+    var exp = $("#copyExpand");
+    more.hidden = !view.open;
+    exp.setAttribute("aria-expanded", String(!!view.open));
+    exp.classList.toggle("open", !!view.open);
+    if (!view.open) return;
     var last = c.last_copy;
-    var sig = c.last_signal;
-    var sub = "";
-    if (last && last.trader) sub = "Last copy: " + (last.name || "") + " via @" + last.trader + " · " + ago(last.ts);
-    else if (sig && sig.trader) sub = "Last seen: @" + sig.trader + " " + sig.side + " " + ago(sig.ts);
-    else sub = "$20 a copy · max 5 open · exits when they sell, −8% stop, +25% TP or 2 h";
-    $("#copySub").textContent = sub;
+    $("#copySub").textContent = last && last.trader
+      ? "Last copy · " + (last.name || "") + " · @" + last.trader + " · " + ago(last.ts)
+      : "No copies yet";
     var list = Array.isArray(c.traders) ? c.traders : [];
-    $("#copySummary").textContent = "Traders" + (c.board_snapshot ? " · board " + c.board_snapshot.replace(/ UTC$/, " UTC") : "");
     $("#copyList").innerHTML = list.map(function (t, i) {
       var p = t.pnl || {};
-      var best = num(p["24h"]) != null ? k(p["24h"]) + " 24h" : (num(p["7d"]) != null ? k(p["7d"]) + " 7d" : k(p["30d"]) + " 30d");
+      var best = num(p["24h"]) != null ? k(p["24h"]) : (num(p["7d"]) != null ? k(p["7d"]) : k(p["30d"]));
       return '<div class="cp-row"><span class="cp-rank">' + (i + 1) + '</span><span class="cp-h">@' + esc(t.handle) +
-        (num(t.weight) != null && Number(t.weight) !== 1 ? ' <i class="cp-w">×' + Number(t.weight).toFixed(2) + "</i>" : "") +
-        '</span><span class="cp-f">' + kn(t.followers) + ' fol</span><span class="cp-p up">' + esc(best) + "</span></div>";
-    }).join("") + '<p class="cp-src">Source: fomo.family daily/weekly boards via FomoRadar public pages (top-10 wallets per board). PAPER only.</p>';
+        '</span><span class="cp-f">' + kn(t.followers) + '</span><span class="cp-p up">' + esc(best) + "</span></div>";
+    }).join("");
   }
 
   function renderLessons(s) {
@@ -127,6 +132,8 @@
     try { renderLessons(s); } catch (e) { /* optional */ }
   }
   function onClick(e, s) {
+    var x = e.target.closest("#copyExpand");
+    if (x) { view.open = !view.open; renderCopy(s); return true; }
     var b = e.target.closest("#copyToggle");
     if (!b) return false;
     var on = !!(s && s.copy && s.copy.enabled);

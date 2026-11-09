@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=32"/>
+<link rel="stylesheet" href="static/app.css?v=33"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -79,14 +79,19 @@
       <section id="styleCard" class="dash-card style-card" aria-labelledby="styleTitle" hidden>
         <div class="dash-head"><h2 id="styleTitle">Trading mode</h2><span id="styleActive" class="style-active"></span></div>
         <div id="styleSeg" class="style-seg" role="group" aria-label="Trading mode"></div>
+        <div id="copyCard" class="copy-row" hidden>
+          <div class="cr-main">
+            <button type="button" id="copyExpand" class="cr-info" aria-expanded="false" aria-controls="copyMore">
+              <span class="cr-title">Copy top traders</span><span id="copyLine" class="cr-sub"></span>
+            </button>
+            <button type="button" id="copyToggle" class="cr-switch" role="switch" aria-checked="false" aria-label="Copy top traders"><span class="cr-knob"></span></button>
+          </div>
+          <div id="copyMore" class="cr-more" hidden>
+            <p id="copySub" class="cr-last"></p>
+            <div id="copyList" class="copy-list"></div>
+          </div>
+        </div>
         <div id="styleBody" class="style-body"></div>
-      </section>
-
-      <section id="copyCard" class="dash-card copy-card" aria-labelledby="copyTitle" hidden>
-        <div class="dash-head"><h2 id="copyTitle">Copy trading</h2><button type="button" id="copyToggle" class="copy-toggle" aria-pressed="false">Off</button></div>
-        <p id="copyLine" class="copy-line"></p>
-        <p id="copySub" class="copy-sub"></p>
-        <details class="copy-traders"><summary id="copySummary">Traders</summary><div id="copyList" class="copy-list"></div></details>
       </section>
 
       <section id="deskCard" class="dash-card" aria-labelledby="deskTitle" hidden>
@@ -270,8 +275,8 @@
 <script src="static/spark.js?v=1"></script>
 <script src="static/dash.js?v=4"></script>
 <script src="static/live.js?v=1"></script>
-<script src="static/copy.js?v=1"></script>
+<script src="static/copy.js?v=2"></script>
 <script src="static/adaptive.js?v=1"></script>
-<script src="static/app.js?v=34"></script>
+<script src="static/app.js?v=35"></script>
 </body>
 </html>
