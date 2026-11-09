@@ -70,18 +70,17 @@
     if (sub) sub.textContent = d.since_reset ? "since reset" : "";
   }
 
-  /* ---------- 3) desk agents (v42 look + pass name slide) ---------- */
+  /* ---------- 3) desk agents (v47 color-only pass/kill) ---------- */
   var PIPE = ["scanner", "auditor", "analyst", "executor"];
-  var PIPE_NEXT = { scanner: "auditor", auditor: "analyst", analyst: "executor" };
   var KIND_STAGE = { scan: "scanner", audit: "auditor", analyst: "analyst", buy: "executor" };
-  var mintLatest = {}; /* mint -> {stage, ok, symbol, ts} */
-  var animQueue = [];
-  var animBusy = false;
-  var holdUntil = {}; /* stage -> ts ms; freeze row text while name is sliding away */
   var reduceMotion = false;
   try { reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e0) {}
   var scanCycle = { items: [], i: 0, timer: 0, lastSig: "" };
   var SCAN_MS = 1000;
+  /* Per-row color hold: green/red for a bit, then grey. Cleared when a new coin arrives. */
+  var rowTone = {}; /* stage -> { mint, symbol, tone, until } */
+  var PASS_HOLD_MS = 2000;
+  var KILL_HOLD_MS = 900;
 
   function agentTone(a) {
     if (!a || a.paused) return "bad";
@@ -90,186 +89,66 @@
     return "ok";
   }
 
-  function actHtml(sym, text) {
+  function actHtml(sym, text, hot) {
     var s = cleanSym(sym);
     var rest = String(text || "");
+    var cls = "dk-nm";
+    if (hot === "pass" || hot === "buy") cls += " is-pass";
+    else if (hot === "kill") cls += " is-kill";
     if (s) {
-      return '<span class="dk-nm">$' + esc(s) + "</span> " + esc(rest);
+      return '<span class="' + cls + '">$' + esc(s) + "</span> " + esc(rest);
     }
     return esc(rest);
   }
 
-  function collectPasses(s) {
-    var out = [], have = {};
-    function push(stage, mint, symbol, ok, ts) {
-      if (!mint || !stage || PIPE.indexOf(stage) < 0) return;
-      if (!ok) return; /* rejects: no animation */
-      var key = stage + "|" + mint + "|" + Math.round((num(ts) || 0));
-      if (have[key]) return;
-      have[key] = 1;
-      out.push({ stage: stage, mint: String(mint), symbol: cleanSym(symbol) || String(mint).slice(0, 4).toUpperCase(), ok: true, ts: num(ts) || 0 });
-    }
-    var livePipe = Array.isArray(s.pipeline) ? s.pipeline
-      : (s.dashboard && Array.isArray(s.dashboard.pipeline) ? s.dashboard.pipeline : null);
-    if (livePipe) livePipe.forEach(function (e) {
-      if (e.stage === "risk") return;
-      push(e.stage, e.mint, e.symbol, e.ok !== false && e.ok !== 0, e.ts);
-    });
+  function setRowTone(stage, mint, symbol, tone) {
+    if (!stage) return;
+    var hold = (tone === "kill") ? KILL_HOLD_MS : PASS_HOLD_MS;
+    rowTone[stage] = {
+      mint: mint ? String(mint) : "",
+      symbol: cleanSym(symbol) || "",
+      tone: tone || "pass",
+      until: Date.now() + hold
+    };
+  }
+
+  function hotFor(stage, mint, symbol) {
+    var rt = rowTone[stage];
+    if (!rt) return "";
+    if (Date.now() > (rt.until || 0)) return "";
+    var sym = cleanSym(symbol);
+    if (rt.symbol && sym && rt.symbol !== sym) return "";
+    if (rt.mint && mint && String(mint) !== rt.mint) return "";
+    return rt.tone === "buy" ? "pass" : rt.tone;
+  }
+
+  function noteAgentEvents(s) {
+    /* Color flash when a row's latest coin / tone changes. No slide. */
     var d = s.dashboard || {};
-    (Array.isArray(d.log) ? d.log : []).forEach(function (r) {
-      if (r.agent === "risk") return;
-      if (r.tone !== "pass" && r.tone !== "buy") return;
-      push(r.agent, r.mint, r.symbol, true, r.ts);
-    });
-    (Array.isArray(s.activity) ? s.activity : []).forEach(function (a) {
-      var stage = KIND_STAGE[a.kind];
-      if (!stage) return;
-      var title = String(a.title || "");
-      if (/^killed|^rejected/i.test(title)) return;
-      push(stage, a.mint, "", true, a.ts);
-    });
-    out.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
-    return out;
-  }
-
-  function rowEl(host, key) {
-    return host.querySelector('.dk-row[data-agent="' + key + '"]');
-  }
-
-  function runQueue() {
-    if (animBusy || !animQueue.length) return;
-    animBusy = true;
-    var job = animQueue.shift();
-    var host = $("#deskAgents");
-    if (!host || reduceMotion) {
-      animBusy = false;
-      runQueue();
-      return;
-    }
-    var from = rowEl(host, job.from);
-    var to = rowEl(host, job.to);
-    if (!from || !to) {
-      animBusy = false;
-      runQueue();
-      return;
-    }
-    var act = from.querySelector(".dk-act");
-    var nm = act && act.querySelector(".dk-nm");
-    var label = "$" + (cleanSym(job.symbol) || "?");
-
-    function finish() {
-      holdUntil[job.from] = 0;
-      animBusy = false;
-      runQueue();
-    }
-
-    /* 1) Name turns green */
-    if (nm && cleanSym(nm.textContent.replace(/^\$/, "")) === cleanSym(job.symbol)) {
-      nm.classList.add("pass");
-    } else if (act) {
-      /* ensure name span exists for this symbol briefly */
-      act.innerHTML = actHtml(job.symbol, job.rest || "");
-      nm = act.querySelector(".dk-nm");
-      if (nm) nm.classList.add("pass");
-    }
-    holdUntil[job.from] = Date.now() + 2000;
-
-    window.setTimeout(function () {
-      host = $("#deskAgents");
-      from = host && rowEl(host, job.from);
-      to = host && rowEl(host, job.to);
-      if (!host || !from || !to) { finish(); return; }
-      act = from.querySelector(".dk-act");
-      nm = act && act.querySelector(".dk-nm");
-      var fr = (nm || act || from).getBoundingClientRect();
-      var toAct = to.querySelector(".dk-act");
-      var tr = (toAct || to).getBoundingClientRect();
-      var hr = host.getBoundingClientRect();
-
-      var slide = document.createElement("span");
-      slide.className = "dk-slide";
-      slide.textContent = label;
-      slide.style.left = (fr.left - hr.left) + "px";
-      slide.style.top = (fr.top - hr.top) + "px";
-      host.appendChild(slide);
-
-      /* Name leaves this row; live text resumes on next state tick (Scanner cycles scans). */
-      holdUntil[job.from] = 0;
-      if (act) {
-        if (job.from === "scanner") {
-          act.innerHTML = esc("scanning…");
-          act.className = "dk-act tone-idle";
-        } else {
-          /* hide name while the green slide travels; rest of line stays */
-          var rest = "";
-          if (nm && nm.nextSibling) rest = String(nm.nextSibling.textContent || "").trim();
-          act.innerHTML = esc(rest);
-          act.className = "dk-act tone-idle";
-        }
-      }
-
-      void slide.offsetWidth;
-      var dx = (tr.left - hr.left) - (fr.left - hr.left);
-      var dy = (tr.top - hr.top) - (fr.top - hr.top);
-      slide.style.transition = "transform 750ms ease-in-out, opacity 750ms ease-in-out";
-      slide.style.transform = "translate(" + dx + "px," + dy + "px)";
-
-      window.setTimeout(function () {
-        /* Land name on destination row */
-        host = $("#deskAgents");
-        to = host && rowEl(host, job.to);
-        if (to) {
-          var dest = to.querySelector(".dk-act");
-          if (dest) {
-            var infoRest = job.toRest || "";
-            dest.innerHTML = actHtml(job.symbol, infoRest);
-            dest.className = "dk-act tone-pass";
-            var landed = dest.querySelector(".dk-nm");
-            if (landed) landed.classList.add("pass");
-            window.setTimeout(function () {
-              if (landed) landed.classList.remove("pass");
-            }, 500);
-          }
-        }
-        if (slide.parentNode) slide.parentNode.removeChild(slide);
-        finish();
-      }, 780);
-    }, 700);
-  }
-
-  function enqueuePass(fromStage, toStage, symbol, rest, toRest) {
-    if (!fromStage || !toStage || !symbol) return;
-    /* drop duplicates at tail */
-    var last = animQueue[animQueue.length - 1];
-    if (last && last.from === fromStage && last.to === toStage && last.symbol === symbol) return;
-    if (animBusy && animQueue.length > 6) animQueue.shift();
-    animQueue.push({ from: fromStage, to: toStage, symbol: symbol, rest: rest || "", toRest: toRest || "" });
-    runQueue();
-  }
-
-  function notePasses(s) {
-    var events = collectPasses(s);
-    events.forEach(function (e) {
-      var prev = mintLatest[e.mint];
-      mintLatest[e.mint] = e;
-      if (firstPaint || reduceMotion) return;
-      if (!prev) return;
-      if (prev.stage === e.stage) return;
-      var fromI = PIPE.indexOf(prev.stage);
-      var toI = PIPE.indexOf(e.stage);
-      if (fromI < 0 || toI < 0 || toI !== fromI + 1) {
-        /* only animate adjacent hops; multi-hop: enqueue stepwise */
-        if (fromI >= 0 && toI > fromI) {
-          for (var i = fromI; i < toI; i++) {
-            enqueuePass(PIPE[i], PIPE[i + 1], e.symbol || prev.symbol, "", "");
-          }
-        }
+    var agents = d.agents || {};
+    PIPE.forEach(function (stage) {
+      var info = agents[stage] || {};
+      /* Executor: only the last bought coin (tone buy) — ignore other chatter. */
+      if (stage === "executor" && info.tone && info.tone !== "buy" && info.tone !== "pass") {
         return;
       }
-      enqueuePass(prev.stage, e.stage, e.symbol || prev.symbol, "", "");
+      if (stage === "executor" && info.tone !== "buy" && !info.symbol) return;
+      var mint = info.mint ? String(info.mint) : "";
+      var sym = cleanSym(info.symbol);
+      var tone = info.tone || "idle";
+      if (!sym || (tone !== "pass" && tone !== "kill" && tone !== "buy")) return;
+      var prev = rowTone[stage];
+      var changed = !prev || prev.mint !== mint || prev.symbol !== sym || prev.tone !== tone;
+      if (firstPaint) {
+        setRowTone(stage, mint, sym, tone === "buy" ? "pass" : tone);
+        return;
+      }
+      if (changed && !reduceMotion) {
+        setRowTone(stage, mint, sym, tone === "buy" ? "pass" : tone);
+      }
     });
+    /* Scanner cycle items also drive color when they flip. */
   }
-
 
   function gatherScanItems(s) {
     var items = [], have = {};
@@ -311,9 +190,11 @@
     if (!act || !item) return;
     var reason = item.ok ? "new pair" : shortScanReason(item.reason);
     var tone = item.ok ? "pass" : "kill";
+    setRowTone("scanner", item.mint, item.symbol, tone);
+    var hot = hotFor("scanner", item.mint, item.symbol) || tone;
     act.className = "dk-act tone-" + tone;
     act.setAttribute("data-mint", item.mint);
-    act.innerHTML = '<span class="dk-nm ' + (item.ok ? "pass" : "kill") + '">$' + esc(item.symbol) + "</span> " +
+    act.innerHTML = '<span class="dk-nm ' + (hot === "kill" ? "is-kill" : "is-pass") + '">$' + esc(item.symbol) + "</span> " +
       esc(item.ok ? "✓ " + reason : ("× " + reason));
   }
 
@@ -331,7 +212,6 @@
 
   function tickScanner(host) {
     if (!host || reduceMotion) return;
-    if ((holdUntil.scanner || 0) > Date.now()) return; /* pass-slide owns the row */
     if (!scanCycle.items.length) return;
     scanCycle.i = (scanCycle.i + 1) % scanCycle.items.length;
     var act = host.querySelector('.dk-row[data-agent="scanner"] .dk-act');
@@ -358,7 +238,7 @@
     $("#deskTitle").textContent = "Desk · " + list.length + " agents";
     $("#deskCounts").textContent = (num(d.scanned) || 0) + " scanned · " + (num(d.traded) || 0) + " traded";
 
-    notePasses(s);
+    noteAgentEvents(s);
 
     var scans = gatherScanItems(s);
     var sig = scans.map(function (x) { return x.mint + (x.ok ? "1" : "0"); }).join(",");
@@ -381,55 +261,43 @@
       var stale = tone === "bad";
       var age = hb[a.key] ? num(hb[a.key].age_s) : null;
       var status = stale ? (hb[a.key] && hb[a.key].paused ? "paused" : (age == null ? "no heartbeat" : "stale")) : a.sub;
-      /* While a pass-slide is in flight from this row, keep scanner free to show live scans;
-         for other rows, skip overwriting destination mid-slide only briefly. */
-      var holding = (holdUntil[a.key] || 0) > now;
-      var body;
-      if (holding && a.key !== "scanner") {
-        body = null; /* preserve via rebuild avoidance — fall through to full html still, but mark */
-      }
-      var actInner = actHtml(sym, txt);
       var actTone = info.tone || "idle";
-      if (a.key === "scanner" && scanCycle.items.length && (holdUntil.scanner || 0) <= now) {
+      var mint = info.mint || "";
+      /* Executor: only last bought coin. */
+      if (a.key === "executor" && actTone !== "buy") {
+        sym = cleanSym(info.symbol) || "";
+        if (!sym) { txt = info.text || "no buys this session"; }
+      }
+      if (a.key === "scanner" && scanCycle.items.length) {
         var it = scanCycle.items[scanCycle.i % scanCycle.items.length];
         sym = it.symbol;
+        mint = it.mint;
         actTone = it.ok ? "pass" : "kill";
-        actInner = '<span class="dk-nm ' + (it.ok ? "pass" : "kill") + '">$' + esc(it.symbol) + "</span> " +
-          esc(it.ok ? "✓ new pair" : ("× " + shortScanReason(it.reason)));
-        if (it.mint) info = Object.assign({}, info, { mint: it.mint });
+        txt = it.ok ? "✓ new pair" : ("× " + shortScanReason(it.reason));
+        info = Object.assign({}, info, { mint: it.mint });
       }
+      var hot = hotFor(a.key, mint, sym);
+      if (fresh && (actTone === "pass" || actTone === "kill" || actTone === "buy") && !reduceMotion) {
+        setRowTone(a.key, mint, sym, actTone === "buy" ? "pass" : actTone);
+        hot = hotFor(a.key, mint, sym) || (actTone === "buy" ? "pass" : actTone);
+      }
+      var actInner = actHtml(sym, txt, hot);
       return '<div class="dk-row' + (stale ? " stale" : "") + '" data-agent="' + esc(a.key) + '">' +
         '<span class="dk-icon" style="--c:' + a.color + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + a.icon + "</svg>" +
         '<i class="dk-dot ' + tone + '"></i></span>' +
         '<span class="dk-name"><b>' + esc(a.name) + '</b><small>' + esc(status) + "</small></span>" +
-        '<span class="dk-act tone-' + esc(actTone) + (fresh ? " flash" : "") + '"' +
-        (info.mint ? ' data-mint="' + esc(info.mint) + '"' : "") +
-        (holding ? ' data-hold="1"' : "") + ">" + actInner + "</span>" +
+        '<span class="dk-act tone-' + esc(actTone) + '"' +
+        (info.mint ? ' data-mint="' + esc(info.mint) + '"' : "") + ">" + actInner + "</span>" +
         (stale
           ? '<button type="button" class="restart-btn need dk-pill" data-restart="' + esc(a.key) + '">Restart</button>'
           : '<span class="dk-pill" style="--c:' + a.color + '">' + esc(info.pill || "") + "</span>") +
         "</div>";
     }).join("");
 
-    /* Preserve in-flight slide overlay and held destination text across re-renders */
-    var slides = Array.prototype.slice.call(host.querySelectorAll(".dk-slide"));
-    var held = {};
-    list.forEach(function (a) {
-      if ((holdUntil[a.key] || 0) > now) {
-        var row = rowEl(host, a.key);
-        var act = row && row.querySelector(".dk-act");
-        if (act) held[a.key] = act.innerHTML;
-      }
-    });
     host.innerHTML = html || '<p class="quiet">No agent data yet.</p>';
-    Object.keys(held).forEach(function (k) {
-      var act = host.querySelector('.dk-row[data-agent="' + k + '"] .dk-act');
-      if (act) act.innerHTML = held[k];
-    });
-    slides.forEach(function (el) { host.appendChild(el); });
   }
 
-  /* ---------- 4) logger ---------- */
+
   function renderLogger(s) {
     var host = $("#loggerFeed");
     if (!host) return;
@@ -445,7 +313,7 @@
       for (var i = 0; i < AGENTS.length; i++) if (AGENTS[i].key === r.agent) meta = AGENTS[i];
       var sym = cleanSym(r.symbol);
       var tone = r.tone || "idle";
-      var symCls = "lg-sym" + (tone === "pass" || tone === "buy" ? " pass" : tone === "kill" ? " kill" : "");
+      var symCls = "lg-sym" + (tone === "pass" || tone === "buy" ? " is-pass" : tone === "kill" ? " is-kill" : "");
       return '<div class="lg-row' + (fresh ? " lg-in" : "") + '"' + (r.mint ? ' data-mint="' + esc(r.mint) + '"' : "") + ">" +
         '<span class="lg-time">' + esc(hm(r.ts)) + "</span>" +
         '<span class="lg-body"><b style="color:' + (meta ? meta.color : "#8e8e93") + '">' + esc((meta ? meta.name : r.agent).toUpperCase()) + ":</b> " +
