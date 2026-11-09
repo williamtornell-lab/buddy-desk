@@ -70,13 +70,14 @@
     if (sub) sub.textContent = d.since_reset ? "since reset" : "";
   }
 
-  /* ---------- 3) desk agents + pipeline chips ---------- */
-  var PIPE_STAGES = ["scanner", "auditor", "analyst", "risk", "executor"];
-  var PIPE_SET = { scanner: 1, auditor: 1, analyst: 1, risk: 1, executor: 1 };
+  /* ---------- 3) desk agents (v42 layout + overlay motion) ---------- */
+  var PIPE_ORDER = ["scanner", "auditor", "analyst", "executor"]; /* buys end at executor, not risk */
+  var PIPE_IDX = { scanner: 0, auditor: 1, analyst: 2, executor: 3, risk: 3 };
   var KIND_STAGE = { scan: "scanner", audit: "auditor", analyst: "analyst", buy: "executor", sell: "risk" };
-  var chipStore = {}; /* mint -> {stage,ok,reason,symbol,ts,el,fading} */
+  var mintStage = {}; /* mint -> {stage, ok, symbol, ts} */
+  var pillSeen = {};
   var reduceMotion = false;
-  try { reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) { reduceMotion = false; }
+  try { reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e0) {}
 
   function agentTone(a) {
     if (!a || a.paused) return "bad";
@@ -85,220 +86,117 @@
     return "ok";
   }
 
-  function shortReason(reason) {
-    var r = String(reason || "").trim();
-    var low = r.toLowerCase();
-    if (!low) return "";
-    var rules = [
-      [/liq|liquidity/, "low liq"], [/top\s*10/, "top10"], [/no holders/, "no hold"],
-      [/never qual/, "unqual"], [/score/, "score"], [/m5_buys|no buys/, "no buys"],
-      [/no price/, "no px"], [/pulled/, "liq pull"], [/mint/, "mint"], [/freeze/, "freeze"],
-      [/rug|dev sold/, "rug"], [/volume/, "vol"], [/h1|pumped/, "pumped"], [/age|young/, "young"],
-      [/bundl|sniper/, "sniper"]
-    ];
-    for (var i = 0; i < rules.length; i++) if (rules[i][0].test(low)) return rules[i][1];
-    var base = r.replace(/\(.*$/, "").trim();
-    return base.length > 10 ? base.slice(0, 9) + "…" : base;
-  }
-
   function letterMark(sym) {
     var s = cleanSym(sym) || "?";
     return s.charAt(0);
   }
 
-  /* Build stage events from live pipeline, dashboard.log, and activity. Real data only. */
   function collectPipeEvents(s) {
-    var events = [];
-    var have = {};
+    var events = [], have = {};
     function push(ev) {
-      if (!ev || !ev.mint || !PIPE_SET[ev.stage]) return;
-      var key = ev.stage + "|" + ev.mint + "|" + Math.round((num(ev.ts) || 0) * 10);
+      if (!ev || !ev.mint) return;
+      var stage = ev.stage;
+      if (stage === "risk") stage = "executor"; /* bought/sold ghosts land on executor for travel end */
+      if (PIPE_IDX[stage] == null && stage !== "executor") return;
+      if (stage === "risk") return;
+      var key = stage + "|" + ev.mint + "|" + Math.round((num(ev.ts) || 0) * 5);
       if (have[key]) return;
       have[key] = 1;
       events.push({
         mint: String(ev.mint),
         symbol: cleanSym(ev.symbol) || String(ev.mint).slice(0, 4).toUpperCase(),
-        stage: ev.stage,
+        stage: stage === "risk" ? "executor" : stage,
         ok: !!ev.ok,
-        reason: ev.ok ? "" : shortReason(ev.reason),
         ts: num(ev.ts) || 0
       });
     }
-
     var livePipe = Array.isArray(s.pipeline) ? s.pipeline
       : (s.dashboard && Array.isArray(s.dashboard.pipeline) ? s.dashboard.pipeline : null);
     if (livePipe) livePipe.forEach(function (e) {
-      push({ mint: e.mint, symbol: e.symbol, stage: e.stage, ok: e.ok !== false && e.ok !== 0, reason: e.reason, ts: e.ts });
+      var st = e.stage;
+      /* Buy path ends at executor; ignore risk as a travel destination. */
+      if (st === "risk") return;
+      push({ mint: e.mint, symbol: e.symbol, stage: st, ok: e.ok !== false && e.ok !== 0, ts: e.ts });
     });
-
     var d = s.dashboard || {};
     (Array.isArray(d.log) ? d.log : []).forEach(function (r) {
-      if (!PIPE_SET[r.agent]) return;
-      var ok = r.tone === "pass" || r.tone === "buy";
-      push({ mint: r.mint, symbol: r.symbol, stage: r.agent, ok: ok, reason: r.reason || r.text, ts: r.ts });
+      if (r.agent === "risk") return;
+      if (PIPE_IDX[r.agent] == null) return;
+      push({ mint: r.mint, symbol: r.symbol, stage: r.agent, ok: r.tone === "pass" || r.tone === "buy", ts: r.ts });
     });
-
-    var coins = s.coins || {};
     (Array.isArray(s.activity) ? s.activity : []).forEach(function (a) {
       var stage = KIND_STAGE[a.kind];
-      if (!stage) return;
+      if (!stage || stage === "risk") return;
       var title = String(a.title || "");
-      var detail = String(a.detail || "");
       var fail = /^killed|^rejected/i.test(title);
-      var ok = !fail;
-      if (a.kind === "buy" || a.kind === "sell") ok = true;
-      if (/→/.test(title) || /FOMO-style graduate|queued/i.test(title + " " + detail)) ok = !fail;
-      var sym = (coins[a.mint] && (coins[a.mint].symbol || coins[a.mint].name)) || "";
-      var reason = fail ? (detail || title.replace(/^Killed\s+|^Rejected\s+/i, "")) : "";
-      push({ mint: a.mint, symbol: sym, stage: stage, ok: ok, reason: reason, ts: a.ts });
+      push({ mint: a.mint, symbol: "", stage: stage, ok: !fail, ts: a.ts });
     });
-
-    /* Current agent mint as a soft live pin (pass if tone is pass/buy). */
-    var dash = d.agents || {};
-    PIPE_STAGES.forEach(function (stage) {
-      var info = dash[stage];
-      if (!info || !info.mint) return;
-      var ok = info.tone === "pass" || info.tone === "buy";
-      var fail = info.tone === "kill";
-      if (!ok && !fail) return;
-      push({ mint: info.mint, symbol: info.symbol, stage: stage, ok: ok, reason: fail ? info.text : "", ts: info.ts || (Date.now() / 1000) });
-    });
-
-    events.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+    events.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
     return events;
   }
 
-  /* Pick up to 3 chips per stage: newest first; keep brief fail fades. */
-  function pickChips(events) {
-    var by = {};
-    PIPE_STAGES.forEach(function (st) { by[st] = []; });
-    var latest = {}; /* mint -> newest event (any stage) */
-    events.forEach(function (e) {
-      if (!latest[e.mint] || e.ts >= latest[e.mint].ts) latest[e.mint] = e;
-    });
-    /* Place each mint only at its latest stage. */
-    Object.keys(latest).forEach(function (m) {
-      var e = latest[m];
-      if (by[e.stage]) by[e.stage].push(e);
-    });
-    PIPE_STAGES.forEach(function (st) {
-      by[st].sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
-      by[st] = by[st].slice(0, 3);
-    });
-    return by;
+  function rowEl(host, key) {
+    return host.querySelector('.dk-row[data-agent="' + key + '"]');
   }
 
-  function ensureChipEl(mint, meta) {
-    var cur = chipStore[mint];
-    if (cur && cur.el) {
-      cur.symbol = meta.symbol || cur.symbol;
-      cur.ok = meta.ok;
-      cur.reason = meta.reason || "";
-      cur.ts = meta.ts;
-      return cur;
-    }
-    var el = document.createElement("button");
-    el.type = "button";
-    el.className = "dk-chip";
-    el.setAttribute("data-mint", mint);
-    el.innerHTML = '<span class="dk-chip-logo" aria-hidden="true">' + esc(letterMark(meta.symbol)) + "</span>" +
-      '<span class="dk-chip-sym">' + esc(cleanSym(meta.symbol) || "?") + "</span>" +
-      '<span class="dk-chip-tag" hidden></span>';
-    chipStore[mint] = { stage: null, ok: meta.ok, reason: meta.reason || "", symbol: meta.symbol, ts: meta.ts, el: el, fading: false };
-    return chipStore[mint];
+  function pulseRow(row, ok) {
+    if (!row || reduceMotion) return;
+    row.classList.remove("dk-pulse-pass", "dk-pulse-fail");
+    void row.offsetWidth;
+    row.classList.add(ok ? "dk-pulse-pass" : "dk-pulse-fail");
+    window.setTimeout(function () { row.classList.remove("dk-pulse-pass", "dk-pulse-fail"); }, 520);
   }
 
-  function paintChip(cur) {
-    var el = cur.el;
-    el.classList.toggle("fail", !cur.ok);
-    el.classList.toggle("ok", !!cur.ok);
-    var sym = el.querySelector(".dk-chip-sym");
-    if (sym) sym.textContent = cleanSym(cur.symbol) || "?";
-    var logo = el.querySelector(".dk-chip-logo");
-    if (logo) logo.textContent = letterMark(cur.symbol);
-    var tag = el.querySelector(".dk-chip-tag");
-    if (tag) {
-      if (!cur.ok && cur.reason) {
-        tag.hidden = false;
-        tag.textContent = cur.reason;
-      } else {
-        tag.hidden = true;
-        tag.textContent = "";
-      }
-    }
+  function flyGhost(host, fromKey, toKey, symbol, ok) {
+    if (reduceMotion || !host) return;
+    var from = rowEl(host, fromKey);
+    var to = rowEl(host, toKey);
+    if (!from || !to) return;
+    var fr = from.getBoundingClientRect();
+    var tr = to.getBoundingClientRect();
+    var hr = host.getBoundingClientRect();
+    var ghost = document.createElement("div");
+    ghost.className = "dk-ghost " + (ok ? "ok" : "fail");
+    ghost.innerHTML = '<span class="dk-ghost-logo">' + esc(letterMark(symbol)) + "</span><span>$" + esc(cleanSym(symbol) || "?") + "</span>";
+    var x0 = fr.left - hr.left + 70;
+    var y0 = fr.top - hr.top + fr.height / 2 - 12;
+    var x1 = tr.left - hr.left + 70;
+    var y1 = tr.top - hr.top + tr.height / 2 - 12;
+    ghost.style.left = x0 + "px";
+    ghost.style.top = y0 + "px";
+    host.appendChild(ghost);
+    void ghost.offsetWidth;
+    ghost.style.transition = "transform 440ms cubic-bezier(.2,.7,.2,1), opacity 440ms ease";
+    ghost.style.transform = "translate(" + (x1 - x0) + "px," + (y1 - y0) + "px)";
+    ghost.style.opacity = "0";
+    window.setTimeout(function () { if (ghost.parentNode) ghost.parentNode.removeChild(ghost); }, 480);
   }
 
-  function flipMove(el, fromRect, toRail) {
-    if (reduceMotion || !fromRect) {
-      toRail.appendChild(el);
+  function animatePipe(host, s) {
+    if (!host || firstPaint) {
+      collectPipeEvents(s).forEach(function (e) {
+        if (!mintStage[e.mint] || e.ts >= mintStage[e.mint].ts) mintStage[e.mint] = e;
+      });
       return;
     }
-    toRail.appendChild(el);
-    var to = el.getBoundingClientRect();
-    var dx = fromRect.left - to.left;
-    var dy = fromRect.top - to.top;
-    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
-    el.style.transition = "none";
-    el.style.transform = "translate(" + dx + "px," + dy + "px)";
-    el.style.opacity = "0.85";
-    void el.offsetWidth;
-    el.style.transition = "transform 420ms cubic-bezier(.2,.7,.2,1), opacity 360ms ease";
-    el.style.transform = "translate(0,0)";
-    el.style.opacity = "1";
-  }
-
-  function syncPipeChips(host, byStage) {
-    if (!host) return;
-    var want = {};
-    PIPE_STAGES.forEach(function (st) {
-      (byStage[st] || []).forEach(function (e) { want[e.mint] = e; });
-    });
-
-    /* Fade out chips no longer wanted. */
-    Object.keys(chipStore).forEach(function (mint) {
-      if (want[mint]) return;
-      var cur = chipStore[mint];
-      if (!cur || !cur.el || cur.fading) return;
-      cur.fading = true;
-      cur.el.classList.add("out");
-      var el = cur.el;
-      window.setTimeout(function () {
-        if (el.parentNode) el.parentNode.removeChild(el);
-        if (chipStore[mint] && chipStore[mint].el === el) delete chipStore[mint];
-      }, reduceMotion ? 0 : 480);
-    });
-
-    PIPE_STAGES.forEach(function (st) {
-      var rail = host.querySelector('.dk-chips[data-stage="' + st + '"]');
-      if (!rail) return;
-      (byStage[st] || []).forEach(function (e) {
-        var cur = ensureChipEl(e.mint, e);
-        cur.fading = false;
-        cur.el.classList.remove("out");
-        paintChip(cur);
-        var prevStage = cur.stage;
-        var fromRect = null;
-        if (cur.el.isConnected) fromRect = cur.el.getBoundingClientRect();
-        if (prevStage !== st || cur.el.parentNode !== rail) {
-          if (prevStage == null && !reduceMotion) {
-            rail.appendChild(cur.el);
-            cur.el.classList.add("in");
-            window.setTimeout(function () { cur.el.classList.remove("in"); }, 500);
-          } else {
-            flipMove(cur.el, fromRect, rail);
-          }
-        } else if (cur.el.parentNode !== rail) {
-          rail.appendChild(cur.el);
-        }
-        cur.stage = st;
-      });
-      /* Newest first without disturbing other rails. */
-      (byStage[st] || []).forEach(function (e, i) {
-        var el = chipStore[e.mint] && chipStore[e.mint].el;
-        if (!el || el.parentNode !== rail) return;
-        var at = rail.children[i];
-        if (at !== el) rail.insertBefore(el, at || null);
-      });
+    var events = collectPipeEvents(s);
+    events.forEach(function (e) {
+      var prev = mintStage[e.mint];
+      mintStage[e.mint] = e;
+      if (!prev) {
+        if (e.stage === "scanner") pulseRow(rowEl(host, "scanner"), e.ok);
+        return;
+      }
+      if (prev.stage === e.stage) return;
+      var fromI = PIPE_IDX[prev.stage];
+      var toI = PIPE_IDX[e.stage];
+      if (fromI == null || toI == null || toI <= fromI) {
+        pulseRow(rowEl(host, e.stage), e.ok);
+        return;
+      }
+      /* Travel one hop at a time visually: from previous stage to this stage. */
+      flyGhost(host, prev.stage, e.stage, e.symbol || prev.symbol, e.ok);
+      pulseRow(rowEl(host, e.stage), e.ok);
     });
   }
 
@@ -314,7 +212,10 @@
     $("#deskTitle").textContent = "Desk · " + list.length + " agents";
     $("#deskCounts").textContent = (num(d.scanned) || 0) + " scanned · " + (num(d.traded) || 0) + " traded";
 
-    var skeleton = list.map(function (a) {
+    var sig = list.map(function (a) { return a.key; }).join(",");
+    var needRebuild = host.getAttribute("data-agent-sig") !== sig || !host.querySelector(".dk-row");
+
+    function rowHtml(a) {
       var info = dash[a.key] || {};
       var tone = agentTone(hb[a.key]);
       var sym = cleanSym(info.symbol);
@@ -325,37 +226,28 @@
       var stale = tone === "bad";
       var age = hb[a.key] ? num(hb[a.key].age_s) : null;
       var status = stale ? (hb[a.key] && hb[a.key].paused ? "paused" : (age == null ? "no heartbeat" : "stale")) : a.sub;
-      var pipe = PIPE_SET[a.key];
-      var row = '<div class="dk-row' + (stale ? " stale" : "") + '" data-agent="' + esc(a.key) + '">' +
+      return '<div class="dk-row' + (stale ? " stale" : "") + '" data-agent="' + esc(a.key) + '">' +
         '<span class="dk-icon" style="--c:' + a.color + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + a.icon + "</svg>" +
         '<i class="dk-dot ' + tone + '"></i></span>' +
         '<span class="dk-name"><b>' + esc(a.name) + '</b><small>' + esc(status) + "</small></span>" +
         '<span class="dk-act tone-' + esc(info.tone || "idle") + (fresh ? " flash" : "") + '"' +
-        (info.mint ? ' data-mint="' + esc(info.mint) + '"' : "") + ">" + esc(txt) + "</span>" +
+        (info.mint ? ' data-mint="' + esc(info.mint) + '"' : "") + ' data-actkey="' + esc(key) + '">' + esc(txt) + "</span>" +
         (stale
           ? '<button type="button" class="restart-btn need dk-pill" data-restart="' + esc(a.key) + '">Restart</button>'
           : '<span class="dk-pill" style="--c:' + a.color + '">' + esc(info.pill || "") + "</span>") +
         "</div>";
-      if (!pipe) return '<div class="dk-block">' + row + "</div>";
-      return '<div class="dk-block" data-stage="' + esc(a.key) + '">' + row +
-        '<div class="dk-chips" data-stage="' + esc(a.key) + '" aria-label="' + esc(a.name) + ' coins"></div></div>';
-    }).join("");
+    }
 
-    /* Preserve chip nodes across re-renders: only rebuild skeleton when agent set changes. */
-    var sig = list.map(function (a) { return a.key; }).join(",");
-    if (host.getAttribute("data-agent-sig") !== sig || !host.querySelector(".dk-block")) {
-      /* Detach live chips before wiping. */
-      Object.keys(chipStore).forEach(function (m) {
-        var el = chipStore[m] && chipStore[m].el;
-        if (el && el.parentNode) el.parentNode.removeChild(el);
-      });
-      host.innerHTML = skeleton || '<p class="quiet">No agent data yet.</p>';
+    if (needRebuild) {
+      host.innerHTML = list.map(rowHtml).join("") || '<p class="quiet">No agent data yet.</p>';
       host.setAttribute("data-agent-sig", sig);
-    } else {
-      /* Update row text / pills / restart in place. */
       list.forEach(function (a) {
-        var block = host.querySelector('.dk-block[data-stage="' + a.key + '"], .dk-row[data-agent="' + a.key + '"]');
-        var row = host.querySelector('.dk-row[data-agent="' + a.key + '"]');
+        var info = dash[a.key] || {};
+        pillSeen[a.key] = info.pill || "";
+      });
+    } else {
+      list.forEach(function (a) {
+        var row = rowEl(host, a.key);
         if (!row) return;
         var info = dash[a.key] || {};
         var tone = agentTone(hb[a.key]);
@@ -364,18 +256,35 @@
         var status = stale ? (hb[a.key] && hb[a.key].paused ? "paused" : (age == null ? "no heartbeat" : "stale")) : a.sub;
         var sym = cleanSym(info.symbol);
         var txt = (sym ? "$" + sym + " " : "") + (info.text || "");
+        var key = a.key + "|" + (info.ts || "") + "|" + txt;
         row.classList.toggle("stale", stale);
         var dot = row.querySelector(".dk-dot");
         if (dot) dot.className = "dk-dot " + tone;
         var small = row.querySelector(".dk-name small");
         if (small) small.textContent = status;
+
         var act = row.querySelector(".dk-act");
         if (act) {
-          act.className = "dk-act tone-" + (info.tone || "idle");
-          act.textContent = txt;
-          if (info.mint) act.setAttribute("data-mint", info.mint); else act.removeAttribute("data-mint");
+          var prevKey = act.getAttribute("data-actkey") || "";
+          if (prevKey !== key) {
+            var apply = function () {
+              act.className = "dk-act tone-" + (info.tone || "idle") + (reduceMotion ? "" : " dk-swap-in");
+              act.textContent = txt;
+              act.setAttribute("data-actkey", key);
+              if (info.mint) act.setAttribute("data-mint", info.mint); else act.removeAttribute("data-mint");
+              if (!reduceMotion) window.setTimeout(function () { act.classList.remove("dk-swap-in"); }, 400);
+            };
+            if (!reduceMotion && prevKey) {
+              act.classList.add("dk-swap-out");
+              window.setTimeout(apply, 160);
+            } else apply();
+          } else {
+            act.className = "dk-act tone-" + (info.tone || "idle");
+          }
         }
+
         var pillSlot = row.querySelector(".dk-pill, .restart-btn.dk-pill");
+        var pillText = info.pill || "";
         if (stale) {
           if (!pillSlot || !pillSlot.classList.contains("restart-btn")) {
             var btn = document.createElement("button");
@@ -390,18 +299,29 @@
             var sp = document.createElement("span");
             sp.className = "dk-pill";
             sp.style.setProperty("--c", a.color);
-            sp.textContent = info.pill || "";
+            sp.textContent = pillText;
             if (pillSlot) row.replaceChild(sp, pillSlot); else row.appendChild(sp);
+            pillSlot = sp;
           } else {
+            if (pillSeen[a.key] !== pillText) {
+              pillSlot.textContent = pillText;
+              if (!reduceMotion) {
+                pillSlot.classList.remove("dk-tick");
+                void pillSlot.offsetWidth;
+                pillSlot.classList.add("dk-tick");
+              }
+            } else {
+              pillSlot.textContent = pillText;
+            }
             pillSlot.style.setProperty("--c", a.color);
-            pillSlot.textContent = info.pill || "";
           }
+          pillSeen[a.key] = pillText;
         }
+        seen[a.key] = key;
       });
     }
 
-    var by = pickChips(collectPipeEvents(s));
-    syncPipeChips(host, by);
+    animatePipe(host, s);
   }
 
   /* ---------- 4) logger ---------- */
