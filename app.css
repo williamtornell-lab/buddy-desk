@@ -1467,3 +1467,71 @@ body.demo-mode .real-bal { display: none !important; }
 }
 .wait-row .dex { padding: 5px 7px; font-size: 9.5px; }
 .wait-row:active { background: rgba(255,255,255,0.02); }
+
+/* v28: open-trade card — header row, full-width number grid, buttons row. Numbers never wrap. */
+html { scroll-padding-top: calc(var(--hdr, 120px) + 8px); }
+header { background: rgba(0, 0, 0, 0.92); }
+.err { top: calc(var(--hdr, 78px) + 6px); }
+.block, .dash-card, section[id] { scroll-margin-top: calc(var(--hdr, 120px) + 8px); }
+.trade-row.open-card { display: block; padding: 12px 0; }
+.open-card .oc-main { display: block; width: 100%; }
+.oc-head {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 11px;
+  align-items: center;
+}
+.oc-name { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; row-gap: 3px; }
+.oc-sym {
+  font-weight: 800; font-size: 15px; letter-spacing: -0.035em; line-height: 1.15;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 100%;
+}
+.oc-name .style-tag, .oc-name .src-pill { flex: none; }
+.oc-fresh {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 4px;
+  color: var(--faint); font-size: 10.5px; font-weight: 600; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.oc-fresh i { width: 6px; height: 6px; border-radius: 50%; background: var(--green, #30d158); box-shadow: 0 0 6px rgba(48,209,88,0.7); }
+.oc-fresh.stale { color: var(--amber); }
+.oc-fresh.stale i { background: var(--amber); box-shadow: none; }
+.oc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+.oc-cell {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  padding: 7px 9px; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.oc-cell i { font-style: normal; color: var(--muted); font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; }
+.oc-cell b {
+  font-size: 13.5px; font-weight: 720; letter-spacing: -0.02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.oc-links { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+.open-card .pnl-col { align-self: start; }
+#openCount { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.oc-total { font-weight: 720; }
+.pricing-details { margin: 8px 0 0; }
+.pricing-details summary { font-size: 11px; color: var(--faint); }
+/* Never wrap numbers anywhere in rows */
+.pnl-col, .wait-px b, .wait-px span, .coin-meta dd, #coinMeta dd { font-variant-numeric: tabular-nums; }
+/* Coin chart toolbar: on narrow phones put Chart / DEX live on its own line so "1d" is never clipped */
+@media (max-width: 400px) {
+  .dex-bar { flex-wrap: wrap; row-gap: 6px; }
+  .dex-bar .tf { flex: 1 1 100%; }
+  .dex-bar .tf button { flex: 1 1 0; }
+  .dex-bar .view { margin-left: 0; }
+}
+/* Closed-trade rows: let the mode/source pills drop to a 2nd line instead of overflowing */
+.trade-row .trade .who > .ticker { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; min-width: 0; }
+.trade-row .trade .who > .ticker .src-pill, .trade-row .trade .who > .ticker .style-tag { margin-left: 0; }
+/* Narrow phones: closed-trade rows put DEX / FOMO under the row so the name + P&L get the full width */
+@media (max-width: 430px) {
+  .trade-row:not(.open-card) { grid-template-columns: minmax(0, 1fr); row-gap: 6px; }
+  .trade-row:not(.open-card) > .row-links { justify-self: end; }
+}

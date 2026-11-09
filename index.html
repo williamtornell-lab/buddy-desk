@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=27"/>
+<link rel="stylesheet" href="static/app.css?v=28"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -108,12 +108,13 @@
           <h2 id="openHeading">Open trades</h2>
           <span id="openCount" class="muted"></span>
         </div>
-        <p id="openMarks" class="open-total"></p>
+        <p id="openMarks" class="open-total" hidden></p>
+
+        <div id="positions" class="sheet"></div>
         <details class="pricing-details">
-          <summary>Pricing details</summary>
+          <summary>How prices work</summary>
           <p>Entry is the simulated paper fill, or the weighted average when a position has one. It is not a market print. Now is the public DexScreener USD price for that mint, read every 30 seconds. The response is cached about 30 seconds and has no trade time, so the exchange clock is unverified. This is not a tick stream. Gain uses the ticket as cost when the entry fee is not stored, so it is gross of that fee and is not a net profit. A missing quote stays unknown.</p>
         </details>
-        <div id="positions" class="sheet"></div>
       </section>
 
       <section class="block" aria-labelledby="waitHeading">
@@ -246,6 +247,6 @@
 <script src="static/styles.js?v=1"></script>
 <script src="static/spark.js?v=1"></script>
 <script src="static/dash.js?v=2"></script>
-<script src="static/app.js?v=29"></script>
+<script src="static/app.js?v=30"></script>
 </body>
 </html>

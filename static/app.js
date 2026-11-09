@@ -201,9 +201,9 @@
     if (abs >= 1000) return sign + "$" + abs.toLocaleString("en-US", { maximumFractionDigits: 2 });
     if (abs >= 1) return sign + "$" + abs.toFixed(2);
     if (abs >= 0.01) return sign + "$" + abs.toFixed(4);
-    const digits = Math.min(12, Math.max(6, Math.ceil(-Math.log10(abs)) + 2));
-    const body = abs.toFixed(digits).replace(/0+$/, "").replace(/\.$/, "");
-    return sign + "$" + body;
+    // Tiny prices: 4 significant digits, DexScreener-style subscript zeros (same as the ticker).
+    if (abs < 0.0001 && window.BuddyChart && BuddyChart.fmtPrice) return sign + "$" + BuddyChart.fmtPrice(abs);
+    return sign + "$" + abs.toPrecision(4);
   }
 
   function toneOf(n) {
@@ -906,22 +906,27 @@
     const realRow = /FOMO|REAL|LIVE|WALLET/.test(fomo) || t.source === "fomo" || t.source === "wallet";
     const pill = fomo.indexOf("FOMO") >= 0 || t.source === "fomo" || t.source === "wallet"
       ? '<span class="src-pill fomo">FOMO</span>' : "";
-    const entry = m.entry == null ? "unknown" : price(m.entry);
-    const nowPx = m.price == null ? "unknown" : price(m.price);
-    const value = m.value != null ? money(m.value) : (m.walletUsd != null ? money(m.walletUsd) : "unknown");
+    const entry = m.entry == null ? "—" : price(m.entry);
+    const nowPx = m.price == null ? "—" : price(m.price);
+    const value = m.value != null ? money(m.value) : (m.walletUsd != null ? money(m.walletUsd) : "—");
+    const freshTxt = String(fresh.text).replace(/^Updated\s+/, "");
+    const cell = (k, v, cls) => '<span class="oc-cell"><i>' + k + '</i><b' + (cls ? ' class="' + cls + '"' : "") + ">" + esc(v) + "</b></span>";
+    const nowTone = m.pct != null && Number.isFinite(m.pct) && Math.abs(m.pct) >= 0.01 ? (m.pct > 0 ? "up" : "down") : "";
     return (
       '<div class="trade-row open-card">' +
-      '<button type="button" class="trade" data-trade="' + index + '">' +
+      '<button type="button" class="trade oc-main" data-trade="' + index + '">' +
+      '<span class="oc-head">' +
       coinLogoHtml(t.mint, t.symbol, t.name, null, pickImageUrl(t)) +
       '<span class="who">' +
-      '<span class="ticker">' + esc(displayTicker(t)) + pill + (window.BuddyStyles ? BuddyStyles.tagHtml(t, state.data) : "") + "</span>" +
-      '<dl class="open-px"><dt>Entry</dt><dd>' + esc(entry) + "</dd><dt>Now</dt><dd>" + esc(nowPx) +
-      "</dd><dt>Value</dt><dd>" + esc(value) + "</dd></dl>" +
-      '<span class="open-fresh' + (fresh.stale ? " stale" : "") + '">' + esc(fresh.text) + "</span>" +
+      '<span class="oc-name"><span class="oc-sym">' + esc(displayTicker(t)) + "</span>" + pill + (window.BuddyStyles ? BuddyStyles.tagHtml(t, state.data) : "") + "</span>" +
+      '<span class="oc-fresh' + (fresh.stale ? " stale" : "") + '" title="' + esc(fresh.text) + '"><i aria-hidden="true"></i>' + esc(freshTxt) + "</span>" +
       "</span>" + gainMarkup(m) +
+      "</span>" +
+      '<span class="oc-grid">' + cell("Entry", entry) + cell("Now", nowPx, nowTone) + cell("Value", value) + "</span>" +
       "</button>" +
-      rowLinks((realRow || !t.mint ? "" : '<button type="button" class="paper-sell" data-sell="' + esc(t.mint) + '" data-sell-name="' + esc(displayTicker(t)) + '">Sell</button>') +
-      dexLink(t.mint, t) + fomoLink(t.link, "FOMO", t.mint)) +
+      '<span class="oc-links">' +
+      (realRow || !t.mint ? "" : '<button type="button" class="paper-sell" data-sell="' + esc(t.mint) + '" data-sell-name="' + esc(displayTicker(t)) + '">Sell</button>') +
+      dexLink(t.mint, t) + fomoLink(t.link, "FOMO", t.mint) + "</span>" +
       "</div>"
     );
   }
@@ -1729,7 +1734,13 @@
           pnlN += 1;
         }
       });
-      openMarks.textContent = opens.length ? openSummaryText(valueSum, valueN, pnlSum, pnlN, unknown) : "";
+      // Total lives in the section header now (no stray line above the card).
+      openMarks.textContent = "";
+      openMarks.hidden = true;
+      const sum = opens.length ? openSummaryText(valueSum, valueN, pnlSum, pnlN, unknown) : "";
+      $("#openCount").innerHTML = opens.length
+        ? (sum ? '<span class="oc-total ' + (pnlN ? toneOf(pnlSum) : "flat") + '">' + esc(sum) + "</span> · " : "") + esc(String(opens.length))
+        : "";
     }
     $("#positions").innerHTML = opens.length
       ? opens.map((t) => tradeButton(t, rowIndex(t), "open")).join("")
@@ -2147,4 +2158,14 @@
   load();
   setInterval(load, 3000);
   setInterval(pollQuotes, 30000);
+})();
+
+// Sticky header height → --hdr, so anchors/scrolls and sticky notices clear the header + ticker strip.
+(function () {
+  const hdr = document.querySelector("header");
+  if (!hdr) return;
+  const set = () => document.documentElement.style.setProperty("--hdr", Math.ceil(hdr.getBoundingClientRect().height) + "px");
+  set();
+  if (window.ResizeObserver) new ResizeObserver(set).observe(hdr);
+  else window.addEventListener("resize", set);
 })();
