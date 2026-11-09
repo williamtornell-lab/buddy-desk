@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=31"/>
+<link rel="stylesheet" href="static/app.css?v=32"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -89,40 +89,10 @@
         <details class="copy-traders"><summary id="copySummary">Traders</summary><div id="copyList" class="copy-list"></div></details>
       </section>
 
-      <section id="adaptiveCard" class="dash-card adaptive-card" aria-labelledby="adaptiveTitle" hidden>
-        <div class="dash-head"><h2 id="adaptiveTitle">Adaptive</h2><span id="adaptiveStatus" class="ad-pill off">No edge yet</span></div>
-        <p id="adaptiveLine" class="copy-line"></p>
-        <p id="adaptiveSub" class="copy-sub"></p>
-        <div id="adaptiveTest" class="ad-test"></div>
-        <div id="adaptiveConv" class="ad-convs" role="group" aria-label="Adaptive conviction"></div>
-        <div id="adaptiveCands" class="ad-cands"></div>
-      </section>
-
-      <section id="lessonsCard" class="dash-card lessons-card" aria-labelledby="lessonsTitle" hidden>
-        <div class="dash-head"><h2 id="lessonsTitle">Lessons</h2><span id="lessonsMeta" class="muted"></span></div>
-        <div id="lessonsBody" class="lessons-body"></div>
-      </section>
-
       <section id="deskCard" class="dash-card" aria-labelledby="deskTitle" hidden>
         <div class="dash-head"><h2 id="deskTitle">Desk</h2><span id="deskCounts" class="muted"></span></div>
         <div id="deskAgents" class="dk-list"></div>
       </section>
-
-      <section id="loggerCard" class="dash-card" aria-labelledby="loggerTitle" hidden>
-        <div class="dash-head"><h2 id="loggerTitle">Logger</h2><span id="loggerKilled" class="down"></span></div>
-        <div id="loggerFeed" class="lg-feed"></div>
-      </section>
-
-      <section id="reasonsCard" class="dash-card" aria-labelledby="reasonsTitle" hidden>
-        <div class="dash-head"><h2 id="reasonsTitle">Why they died</h2><span class="muted">since reset</span></div>
-        <div id="killReasons" class="kr-list"></div>
-      </section>
-
-      <div id="stats" class="stats"></div>
-      <button type="button" id="health" class="health" data-goto="agents" hidden>
-        <span id="healthDot" class="dot flat" aria-hidden="true"></span>
-        <span id="healthText">Agents</span>
-      </button>
 
       <section class="block" aria-labelledby="openHeading">
         <div class="sec-head">
@@ -137,6 +107,36 @@
           <p>Entry is the simulated paper fill, or the weighted average when a position has one. It is not a market print. Now is the public DexScreener USD price for that mint, read every 30 seconds. The response is cached about 30 seconds and has no trade time, so the exchange clock is unverified. This is not a tick stream. Gain uses the ticket as cost when the entry fee is not stored, so it is gross of that fee and is not a net profit. A missing quote stays unknown.</p>
         </details>
       </section>
+
+      <section id="loggerCard" class="dash-card" aria-labelledby="loggerTitle" hidden>
+        <div class="dash-head"><h2 id="loggerTitle">Logger</h2><span id="loggerKilled" class="down"></span></div>
+        <div id="loggerFeed" class="lg-feed"></div>
+      </section>
+
+      <section id="lessonsCard" class="dash-card lessons-card" aria-labelledby="lessonsTitle" hidden>
+        <div class="dash-head"><h2 id="lessonsTitle">Lessons</h2><span id="lessonsMeta" class="muted"></span></div>
+        <div id="lessonsBody" class="lessons-body"></div>
+      </section>
+
+      <section id="adaptiveCard" class="dash-card adaptive-card" aria-labelledby="adaptiveTitle" hidden>
+        <div class="dash-head"><h2 id="adaptiveTitle">Adaptive</h2><span id="adaptiveStatus" class="ad-pill off">No edge yet</span></div>
+        <p id="adaptiveLine" class="copy-line"></p>
+        <p id="adaptiveSub" class="copy-sub"></p>
+        <div id="adaptiveTest" class="ad-test"></div>
+        <div id="adaptiveConv" class="ad-convs" role="group" aria-label="Adaptive conviction"></div>
+        <div id="adaptiveCands" class="ad-cands"></div>
+      </section>
+
+      <section id="reasonsCard" class="dash-card" aria-labelledby="reasonsTitle" hidden>
+        <div class="dash-head"><h2 id="reasonsTitle">Why they died</h2><span class="muted">since reset</span></div>
+        <div id="killReasons" class="kr-list"></div>
+      </section>
+
+      <div id="stats" class="stats"></div>
+      <button type="button" id="health" class="health" data-goto="agents" hidden>
+        <span id="healthDot" class="dot flat" aria-hidden="true"></span>
+        <span id="healthText">Agents</span>
+      </button>
 
       <section class="block" aria-labelledby="waitHeading">
         <div class="sec-head">
@@ -272,6 +272,6 @@
 <script src="static/live.js?v=1"></script>
 <script src="static/copy.js?v=1"></script>
 <script src="static/adaptive.js?v=1"></script>
-<script src="static/app.js?v=33"></script>
+<script src="static/app.js?v=34"></script>
 </body>
 </html>
