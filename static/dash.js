@@ -96,7 +96,9 @@
     var d = s.dashboard || {};
     var hb = s.agents || {};
     var dash = d.agents || {};
-    var list = AGENTS.filter(function (a) { return hb[a.key] || dash[a.key]; });
+    /* Display-only: these keep running under the supervisor, just not listed on the Desk card. */
+    var HIDE = { copy: 1, learner: 1, adaptive: 1, fomo_holdings: 1 };
+    var list = AGENTS.filter(function (a) { return !HIDE[a.key] && (hb[a.key] || dash[a.key]); });
     $("#deskTitle").textContent = "Desk · " + list.length + " agents";
     $("#deskCounts").textContent = (num(d.scanned) || 0) + " scanned · " + (num(d.traded) || 0) + " traded";
     var html = list.map(function (a) {
