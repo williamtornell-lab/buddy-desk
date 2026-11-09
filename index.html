@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=23"/>
+<link rel="stylesheet" href="static/app.css?v=24"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -149,7 +149,7 @@
       <div id="agentCards" class="agents"></div>
       <details class="settings">
         <summary>Settings</summary>
-        <p class="hint">Read-only on Plan B. Change them in Telegram with Buddy.</p>
+        <button type="button" class="restart-btn" data-reset-paper="200">Reset paper</button>
         <pre id="settingsBox"></pre>
       </details>
       <p class="foot">
@@ -212,6 +212,6 @@
   </div>
 </div>
 <script src="static/marks.js?v=1"></script>
-<script src="static/app.js?v=25"></script>
+<script src="static/app.js?v=26"></script>
 </body>
 </html>

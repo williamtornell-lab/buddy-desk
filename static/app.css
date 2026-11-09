@@ -591,6 +591,18 @@ header {
   white-space: nowrap;
 }
 .fomo:active { opacity: 0.75; }
+.paper-sell {
+  color: var(--red);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(255, 69, 58, 0.12);
+  border: 1px solid rgba(255, 69, 58, 0.28);
+  white-space: nowrap;
+}
 
 .coin-logo-host { flex: none; }
 .coin-logo {

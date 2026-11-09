@@ -874,6 +874,7 @@
     const m = liveMark(t);
     const fresh = freshLabel(m);
     const fomo = String(t.mode || t.source || "").toUpperCase();
+    const realRow = /FOMO|REAL|LIVE|WALLET/.test(fomo) || t.source === "fomo" || t.source === "wallet";
     const pill = fomo.indexOf("FOMO") >= 0 || t.source === "fomo" || t.source === "wallet"
       ? '<span class="src-pill fomo">FOMO</span>' : "";
     const entry = m.entry == null ? "unknown" : price(m.entry);
@@ -889,7 +890,9 @@
       "</dd><dt>Value</dt><dd>" + esc(value) + "</dd></dl>" +
       '<span class="open-fresh' + (fresh.stale ? " stale" : "") + '">' + esc(fresh.text) + "</span>" +
       "</span>" + gainMarkup(m) +
-      "</button>" + fomoLink(t.link, "FOMO", t.mint) +
+      "</button>" +
+      (realRow || !t.mint ? "" : '<button type="button" class="paper-sell" data-sell="' + esc(t.mint) + '" data-sell-name="' + esc(displayTicker(t)) + '">Sell</button>') +
+      fomoLink(t.link, "FOMO", t.mint) +
       "</div>"
     );
   }
@@ -1010,6 +1013,7 @@
 
 
   let pendingMode = null;
+  let pendingDesk = null;
   let modeUiBusy = false;
 
   function showToast(text, isReal) {
@@ -1057,8 +1061,62 @@
 
   function closeModeConfirm() {
     pendingMode = null;
+    pendingDesk = null;
     const box = $("#modeConfirm");
     if (box) box.hidden = true;
+  }
+
+  function openDeskConfirm(action) {
+    pendingDesk = action;
+    pendingMode = null;
+    const box = $("#modeConfirm");
+    const title = $("#modeConfirmTitle");
+    const body = $("#modeConfirmBody");
+    const ok = $("#modeConfirmOk");
+    if (!box || !title || !body || !ok) return;
+    if (action.type === "sell") {
+      title.textContent = "Sell " + (action.name || "this coin") + "?";
+      body.textContent = "Paper close at the latest price.";
+      ok.textContent = "Sell";
+    } else {
+      title.textContent = "Reset paper to $200?";
+      body.textContent = "Closes paper trades, saves a private backup, and clears paper history.";
+      ok.textContent = "Reset";
+    }
+    ok.classList.add("danger");
+    box.hidden = false;
+  }
+
+  async function postDesk(body) {
+    const target = dataPath();
+    if (isDemoPreview() || state.fixture || (state.data && state.data.demo)) {
+      showToast("Demo preview", false);
+      return false;
+    }
+    if (!target || target.kind !== "live" || !target.id) {
+      showErr("Needs a live desk link.");
+      return false;
+    }
+    const r = await fetch("https://ntfy.sh/" + encodeURIComponent("b-" + target.id), {
+      method: "POST",
+      body: body,
+      headers: { "Content-Type": "text/plain;charset=utf-8" }
+    });
+    if (!r.ok) throw new Error("bad status");
+    return true;
+  }
+
+  async function runDesk(action) {
+    try {
+      const body = action.type === "sell" ? "close:" + action.mint : "reset:" + action.amount;
+      const ok = await postDesk(body);
+      if (ok) {
+        showToast(action.type === "sell" ? "Sell sent" : "Reset sent", false);
+        window.setTimeout(load, 1500);
+      }
+    } catch (err) {
+      showErr("Desk command failed");
+    }
   }
 
   async function requestMode(next) {
@@ -1756,6 +1814,16 @@
   });
   document.querySelector("main").addEventListener("click", (e) => {
     if (e.target.closest("a")) return;
+    const sell = e.target.closest("[data-sell]");
+    if (sell) {
+      openDeskConfirm({ type: "sell", mint: sell.dataset.sell, name: sell.dataset.sellName });
+      return;
+    }
+    const reset = e.target.closest("[data-reset-paper]");
+    if (reset) {
+      openDeskConfirm({ type: "reset", amount: "200" });
+      return;
+    }
     const restart = e.target.closest("[data-restart]");
     if (restart) {
       requestRestart(restart);
@@ -1819,6 +1887,12 @@
   const modeOk = $("#modeConfirmOk");
   if (modeCancel) modeCancel.addEventListener("click", closeModeConfirm);
   if (modeOk) modeOk.addEventListener("click", () => {
+    if (pendingDesk) {
+      const action = pendingDesk;
+      closeModeConfirm();
+      runDesk(action);
+      return;
+    }
     if (!pendingMode) return;
     requestMode(pendingMode);
   });
