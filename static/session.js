@@ -1,7 +1,7 @@
 /* Buddy desk power button + Desk sessions.
    The one Desk ON/OFF button (Settings tab) sends the existing desk:on / desk:off command
    (off = no new PAPER buys, open trades still managed). Turning off archives the
-   Desk card's session counters on the desk; Insights lists past sessions.
+   session counters; Insights lists past sessions. Power + session line only in Settings.
    Display only: balance, trades, equity chart and learning are not touched. */
 (function (root) {
   "use strict";
@@ -56,16 +56,9 @@
         (num(sess.sells) || 0) + " sells · " + esc(usd(sess.pnl_usd)) + "</p>" : "");
   }
 
-  function renderDeskSession(s) {
-    var d = s.dashboard || {};
-    var sess = d.session;
-    var el = $("#deskSession");
-    if (!el) return;
-    if (!sess || !sess.start) { el.hidden = true; return; }
-    el.hidden = false;
-    el.textContent = "Session since " + hm(sess.start) + " · " + (num(sess.buys) || 0) + " buys · " + (num(sess.sells) || 0) + " sells · " +
-      (num(sess.wins) || 0) + "W/" + (num(sess.losses) || 0) + "L · " + usd(sess.pnl_usd);
-  }
+  // Session line lives only under the Settings power button (dp-sess in renderPower).
+  // Home no longer shows #deskSession.
+  function renderDeskSession(s) { /* removed from Home; kept as no-op */ }
 
   function renderPast(s) {
     var card = $("#sessionsCard"), host = $("#pastSessions");
