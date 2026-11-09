@@ -1,12 +1,16 @@
 /* Buddy live channel: 5s desk snapshots over MQTT/WebSocket (port 443, free public broker).
    The desk encrypts each snapshot (AES-256-GCM); topic + key are derived from the private
-   desk id in the link, so the broker only relays opaque bytes. Read-only: never publishes. */
+   desk id in the link, so the broker only relays opaque bytes.
+   Commands: the app also publishes encrypted commands on a separate cmd topic (same key). */
 (function (root) {
   "use strict";
   var BROKER = "wss://public.cloud.shiftr.io";
   var ENC = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
   var DEC = typeof TextDecoder !== "undefined" ? new TextDecoder() : null;
-  var st = { ws: null, snap: null, lastAt: 0, connected: false, retry: 2000, timer: null, ping: null, id: "", hooks: {} };
+  var st = {
+    ws: null, snap: null, lastAt: 0, connected: false, retry: 2000, timer: null, ping: null,
+    id: "", hooks: {}, topic: "", cmdTopic: "", key: null, pendingAcks: {}
+  };
 
   function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ("0" + b.toString(16)).slice(-2); }).join(""); }
   function sha(text) { return root.crypto.subtle.digest("SHA-256", ENC.encode(text)); }
@@ -20,6 +24,11 @@
     return pkt(0x10, body);
   }
   function subscribePkt(topic) { return pkt(0x82, [0, 1].concat(mqttStr(topic), [0])); }
+  function publishPkt(topic, payloadU8) {
+    var t = mqttStr(topic);
+    var body = t.concat(Array.prototype.slice.call(payloadU8));
+    return pkt(0x30, body);
+  }
 
   function parse(u8, cb) {
     var i = 0;
@@ -37,10 +46,24 @@
   }
   function emitStatus() { if (st.hooks.onStatus) st.hooks.onStatus(status()); }
 
+  function noteAck(snap) {
+    var ack = snap && snap.cmd_ack;
+    if (!ack || !ack.cid) return;
+    var pend = st.pendingAcks[ack.cid];
+    if (!pend) return;
+    delete st.pendingAcks[ack.cid];
+    if (st.hooks.onAck) st.hooks.onAck(ack, pend);
+  }
+
   async function open(id) {
     if (!root.crypto || !root.crypto.subtle || !ENC || !root.WebSocket) { emitStatus(); return; }
     var topic = "bdy/" + hex(await sha("buddy-live-topic|" + id)).slice(0, 32);
-    var key = await root.crypto.subtle.importKey("raw", await sha("buddy-live-key|" + id), { name: "AES-GCM" }, false, ["decrypt"]);
+    var cmdTopic = "bdy/" + hex(await sha("buddy-cmd-topic|" + id)).slice(0, 32);
+    var rawKey = await sha("buddy-live-key|" + id);
+    var key = await root.crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+    st.topic = topic;
+    st.cmdTopic = cmdTopic;
+    st.key = key;
     var ws;
     try { ws = new WebSocket(BROKER, ["mqtt"]); } catch (e) { return later(id); }
     ws.binaryType = "arraybuffer";
@@ -65,10 +88,15 @@
         root.crypto.subtle.decrypt({ name: "AES-GCM", iv: payload.slice(2, 14) }, key, payload.slice(14)).then(function (plain) {
           var snap = JSON.parse(DEC.decode(plain));
           if (!snap || !snap.ts) return;
-          if (st.snap && snap.ts <= st.snap.ts) return;
+          if (st.snap && snap.ts <= st.snap.ts) {
+            // Still surface newer acks even if ts didn't advance somehow.
+            noteAck(snap);
+            return;
+          }
           st.snap = snap;
           // A retained message can be old (desk down): only count it as live when recent.
           st.lastAt = Math.min(Date.now() / 1000, snap.ts);
+          noteAck(snap);
           if (st.hooks.onSnap) st.hooks.onSnap(snap);
           emitStatus();
         }).catch(function () { /* wrong key / corrupt: ignore */ });
@@ -95,7 +123,65 @@
     clearTimeout(st.timer);
     clearInterval(st.ping);
     if (st.ws) { st.ws.onclose = null; try { st.ws.close(); } catch (e) { /* ignore */ } }
-    st.ws = null; st.snap = null; st.id = ""; st.connected = false;
+    st.ws = null; st.snap = null; st.id = ""; st.connected = false; st.key = null;
+  }
+
+  function newCid() {
+    if (root.crypto && root.crypto.randomUUID) return root.crypto.randomUUID().replace(/-/g, "");
+    return "c" + Date.now().toString(16) + Math.random().toString(16).slice(2, 10);
+  }
+
+  async function sealCmd(cmd, cid) {
+    if (!st.key || !ENC) throw new Error("no key");
+    var body = ENC.encode(JSON.stringify({ v: 1, cid: cid, ts: Date.now() / 1000, cmd: String(cmd || "") }));
+    var iv = root.crypto.getRandomValues(new Uint8Array(12));
+    var ct = new Uint8Array(await root.crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, st.key, body));
+    var out = new Uint8Array(2 + 12 + ct.length);
+    out[0] = 66; out[1] = 49;
+    out.set(iv, 2);
+    out.set(ct, 14);
+    return out;
+  }
+
+  async function publishRaw(payloadU8) {
+    if (!st.cmdTopic) return false;
+    if (st.ws && st.connected && st.ws.readyState === 1) {
+      st.ws.send(publishPkt(st.cmdTopic, payloadU8));
+      return true;
+    }
+    // Short-lived publish connection if the live socket is down.
+    return await new Promise(function (resolve) {
+      var done = false;
+      var ws;
+      try { ws = new WebSocket(BROKER, ["mqtt"]); } catch (e) { resolve(false); return; }
+      ws.binaryType = "arraybuffer";
+      var t = setTimeout(function () { if (!done) { done = true; try { ws.close(); } catch (e) {} resolve(false); } }, 8000);
+      ws.onopen = function () { ws.send(connectPkt()); };
+      ws.onmessage = function (ev) {
+        parse(new Uint8Array(ev.data), function (type, _f, body) {
+          if (type !== 2) return;
+          if (body[1] !== 0) { if (!done) { done = true; clearTimeout(t); resolve(false); } return; }
+          try { ws.send(publishPkt(st.cmdTopic, payloadU8)); } catch (e) { if (!done) { done = true; clearTimeout(t); resolve(false); } return; }
+          setTimeout(function () { try { ws.close(); } catch (e) {} }, 200);
+          if (!done) { done = true; clearTimeout(t); resolve(true); }
+        });
+      };
+      ws.onerror = function () { if (!done) { done = true; clearTimeout(t); resolve(false); } };
+    });
+  }
+
+  /** Publish an encrypted command. Returns {ok, cid}. Registers pending ack. */
+  async function sendCmd(cmd, meta) {
+    if (!st.id) return { ok: false, cid: null };
+    var cid = newCid();
+    try {
+      var sealed = await sealCmd(cmd, cid);
+      var ok = await publishRaw(sealed);
+      if (ok) st.pendingAcks[cid] = Object.assign({ at: Date.now(), cmd: cmd }, meta || {});
+      return { ok: ok, cid: cid };
+    } catch (e) {
+      return { ok: false, cid: cid };
+    }
   }
 
   /* Overlay a live snapshot on the full state.json (pure; returns a new object). */
@@ -107,6 +193,7 @@
     if (out.modes && snap.active_mode && out.modes[snap.active_mode]) out.active_mode_profile = out.modes[snap.active_mode];
     out.ts = snap.ts;
     out.live_ts = snap.ts;
+    if (snap.cmd_ack) out.cmd_ack = snap.cmd_ack;
     if (snap.agents && out.agents && typeof out.agents === "object") {
       var ag = {};
       Object.keys(out.agents).forEach(function (k) { ag[k] = out.agents[k]; });
@@ -177,7 +264,7 @@
   }
 
   root.BuddyLive = {
-    start: start, stop: stop, merge: merge, status: status,
+    start: start, stop: stop, merge: merge, status: status, sendCmd: sendCmd, newCid: newCid,
     snap: function () { return st.snap; },
     connected: function () { return st.connected; }
   };

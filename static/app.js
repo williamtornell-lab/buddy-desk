@@ -1178,7 +1178,7 @@
     box.hidden = false;
   }
 
-  async function postDesk(body) {
+  async function postDesk(body, toastMeta) {
     const target = dataPath();
     if (isDemoPreview() || state.fixture || (state.data && state.data.demo)) {
       showToast("Demo preview", false);
@@ -1188,12 +1188,29 @@
       showErr("Needs a live desk link.");
       return false;
     }
-    const r = await fetch("https://ntfy.sh/" + encodeURIComponent("b-" + target.id), {
-      method: "POST",
-      body: body,
-      headers: { "Content-Type": "text/plain;charset=utf-8" }
-    });
-    if (!r.ok) throw new Error("bad status");
+    let cid = null;
+    let mqttOk = false;
+    let ntfyOk = false;
+    if (window.BuddyLive && typeof BuddyLive.sendCmd === "function") {
+      try {
+        const res = await BuddyLive.sendCmd(body, toastMeta || {});
+        mqttOk = !!(res && res.ok);
+        cid = res && res.cid;
+      } catch (e) { /* MQTT publish failed; ntfy may still work */ }
+    }
+    if (!cid && window.BuddyLive && typeof BuddyLive.newCid === "function") {
+      try { cid = BuddyLive.newCid(); } catch (e) { cid = null; }
+    }
+    if (!cid) cid = "c" + Date.now().toString(16) + Math.random().toString(16).slice(2, 8);
+    try {
+      const r = await fetch("https://ntfy.sh/" + encodeURIComponent("b-" + target.id), {
+        method: "POST",
+        body: "cid=" + cid + "\n" + body,
+        headers: { "Content-Type": "text/plain;charset=utf-8" }
+      });
+      ntfyOk = r.ok;
+    } catch (e) { ntfyOk = false; }
+    if (!mqttOk && !ntfyOk) throw new Error("bad status");
     return true;
   }
 
@@ -1273,12 +1290,8 @@
       if (el) el.disabled = true;
     });
     try {
-      const r = await fetch("https://ntfy.sh/" + encodeURIComponent("b-" + target.id), {
-        method: "POST",
-        body: "mode:" + next,
-        headers: { "Content-Type": "text/plain;charset=utf-8" }
-      });
-      if (!r.ok) throw new Error("bad status");
+      const sent = await postDesk("mode:" + next, { toast: next === "real" ? "REAL mode" : "PAPER mode" });
+      if (!sent) throw new Error("bad status");
       const heldMode = next === "real" ? "LIVE" : "PAPER";
       writeModeHold(heldMode);
       syncModeSwitch(next);
@@ -1336,12 +1349,8 @@
       return;
     }
     try {
-      const r = await fetch("https://ntfy.sh/" + encodeURIComponent("b-" + target.id), {
-        method: "POST",
-        body: "restart:" + name,
-        headers: { "Content-Type": "text/plain;charset=utf-8" }
-      });
-      if (!r.ok) throw new Error("bad status");
+      const sent = await postDesk("restart:" + name, { toast: "Restarted" });
+      if (!sent) throw new Error("bad status");
       finish("Restarted");
     } catch (err) {
       finish("Failed");
@@ -2136,7 +2145,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v48"; /* real-scalp-v48 */
+      BuddySettings.hooks.version = "app v49"; /* mqtt-cmds-v49 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
@@ -2367,7 +2376,13 @@
         });
         render();
       },
-      onStatus: setLiveDot
+      onStatus: setLiveDot,
+      onAck: (ack, pend) => {
+        const msg = (ack && ack.msg) || (pend && pend.toast) || "Desk got it";
+        showToast(msg, false);
+        if (state.data) render();
+        window.setTimeout(load, 800);
+      }
     });
   }
 
