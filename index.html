@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=24"/>
+<link rel="stylesheet" href="static/app.css?v=25"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -169,10 +169,28 @@
         </div>
       </div>
       <div id="coinPnl" class="pnl-row flat"></div>
-      <div id="coinChart" class="chart"></div>
-      <p id="coinChartNote" class="caption"></p>
+      <section id="coinChartCard" class="chart-card dex-card" aria-label="Price chart">
+        <div class="dex-bar">
+          <div id="coinTf" class="chart-ranges tf" role="group" aria-label="Candle interval">
+            <button type="button" data-tf="1m">1m</button>
+            <button type="button" data-tf="5m" class="on">5m</button>
+            <button type="button" data-tf="15m">15m</button>
+            <button type="button" data-tf="1h">1h</button>
+            <button type="button" data-tf="4h">4h</button>
+            <button type="button" data-tf="1d">1d</button>
+          </div>
+          <div id="coinViewSeg" class="chart-ranges view" role="group" aria-label="Chart source">
+            <button type="button" data-cview="chart" class="on">Chart</button>
+            <button type="button" data-cview="live">DEX live</button>
+          </div>
+        </div>
+        <div id="coinChart" class="chart dx-host"></div>
+        <div id="coinDex" class="dex-embed" hidden></div>
+        <p id="coinChartNote" class="caption"></p>
+      </section>
       <dl id="coinMeta" class="meta"></dl>
       <a id="coinFomo" class="btn" hidden>Open coin on FOMO</a>
+      <a id="coinDexLink" class="btn btn-dex" target="_blank" rel="noopener" hidden>Open on DexScreener</a>
       <a id="coinProfile" class="profile-link" href="https://fomo.family/profile/tornell?source=share_link&amp;r=savipww">My FOMO · @tornell</a>
     </section>
   </main>
@@ -211,7 +229,9 @@
     <p>Open the link from Telegram. It carries your desk in the <code>#d=</code> hash.</p>
   </div>
 </div>
+<script src="static/lwc-4.2.3.js"></script>
 <script src="static/marks.js?v=1"></script>
-<script src="static/app.js?v=26"></script>
+<script src="static/dexchart.js?v=1"></script>
+<script src="static/app.js?v=27"></script>
 </body>
 </html>

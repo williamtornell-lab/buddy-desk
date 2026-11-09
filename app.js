@@ -600,6 +600,7 @@
   function bindChart() {
     const wrap = $("#chartWrap");
     if (!wrap || wrap.dataset.bound) return;
+    if (window.BuddyChart && BuddyChart.ok()) return;
     wrap.dataset.bound = "1";
     let active = false;
     wrap.addEventListener("pointerdown", (e) => {
@@ -841,6 +842,31 @@
     });
   }
 
+  function coinChain(mint) {
+    const c = coinOf(state.data, mint) || {};
+    return String(c.chain || c.chain_id || "solana").toLowerCase() === "1399811149" ? "solana" : String(c.chain || "solana").toLowerCase();
+  }
+
+  function coinPool(mint, t) {
+    const c = coinOf(state.data, mint) || {};
+    return (t && (t.pool || t.mark_pair)) || c.pool || c.pair || "";
+  }
+
+  function dexHref(mint, t) {
+    if (!mint || !window.BuddyChart) return "";
+    return BuddyChart.dexUrl(coinChain(mint), coinPool(mint, t) || mint, false);
+  }
+
+  function dexLink(mint, t) {
+    const url = dexHref(mint, t);
+    if (!url) return "";
+    return '<a class="dex" href="' + esc(url) + '" target="_blank" rel="noopener" aria-label="Open on DexScreener">DEX</a>';
+  }
+
+  function rowLinks(inner) {
+    return inner ? '<span class="row-links">' + inner + "</span>" : "";
+  }
+
   function fomoLink(href, label, mint) {
     // Blue FOMO chip → that coin inside the FOMO app (universal /coin link).
     const url = fomoCoinUrl(mint, href);
@@ -891,8 +917,8 @@
       '<span class="open-fresh' + (fresh.stale ? " stale" : "") + '">' + esc(fresh.text) + "</span>" +
       "</span>" + gainMarkup(m) +
       "</button>" +
-      (realRow || !t.mint ? "" : '<button type="button" class="paper-sell" data-sell="' + esc(t.mint) + '" data-sell-name="' + esc(displayTicker(t)) + '">Sell</button>') +
-      fomoLink(t.link, "FOMO", t.mint) +
+      rowLinks((realRow || !t.mint ? "" : '<button type="button" class="paper-sell" data-sell="' + esc(t.mint) + '" data-sell-name="' + esc(displayTicker(t)) + '">Sell</button>') +
+      dexLink(t.mint, t) + fomoLink(t.link, "FOMO", t.mint)) +
       "</div>"
     );
   }
@@ -921,7 +947,7 @@
       "</span>" +
       '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" +
       "</span>" + pnlMarkup(t) +
-      "</button>" + fomoLink(t.link, "FOMO", t.mint) +
+      "</button>" + rowLinks(dexLink(t.mint, t) + fomoLink(t.link, "FOMO", t.mint)) +
       "</div>"
     );
   }
@@ -941,11 +967,13 @@
     const mint = w.mint ? esc(w.mint) : "";
     const img = pickImageUrl(w) || pickImageUrl(coin);
     return (
+      '<div class="wait-cell">' +
       '<button type="button" class="wait-card" data-mint="' + mint + '">' +
       coinLogoHtml(w.mint, w.symbol || coin.symbol, w.name || coin.name, null, img) +
       '<span class="ticker">' + esc(ticker) + "</span>" +
       '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" +
-      "</button>"
+      "</button>" + dexLink(w.mint, w) +
+      "</div>"
     );
   }
 
@@ -964,7 +992,7 @@
       "<span class=\"ticker\">" + esc(title) + "</span>" +
       '<span class="meta-line">' + esc(detailBits.join(" · ")) + "</span>" +
       "</span>" +
-      "</button>" + fomoLink(a.link, "FOMO", a.mint) +
+      "</button>" + rowLinks(dexLink(a.mint, null) + fomoLink(a.link, "FOMO", a.mint)) +
       "</div>"
     );
   }
@@ -1225,7 +1253,12 @@
       b.setAttribute("aria-selected", on ? "true" : "false");
     });
     document.querySelectorAll("main .tab").forEach((s) => s.classList.toggle("on", s.id === id));
-    if (id !== "coin") state.coinKey = null;
+    if (id !== "coin") {
+      state.coinKey = null;
+      state.coinMint = null;
+      if (window.BuddyChart) BuddyChart.coinDestroy();
+      unloadDexEmbed();
+    }
     window.scrollTo(0, 0);
   }
 
@@ -1273,6 +1306,94 @@
     showTab("coin");
   }
 
+  function coinFillsFor(mint) {
+    const s = state.data || {};
+    const rows = (state.trades || []).filter((r) => r.mint === mint);
+    const pos = Array.isArray(s.positions) ? s.positions.filter((p) => p && p.mint === mint) : [];
+    const keys = {};
+    const out = [];
+    rows.concat(pos.map((p) => normalizeTrade(p, s, true))).forEach((r) => {
+      const k = [r.opened_at, r.entry, r.closed_at, r.exit].join("|");
+      if (keys[k]) return;
+      keys[k] = 1;
+      out.push(Object.assign({}, r, { fills: Array.isArray(r.fills) ? r.fills : undefined }));
+    });
+    return out;
+  }
+
+  function unloadDexEmbed() {
+    const host = $("#coinDex");
+    if (host) { host.innerHTML = ""; host.dataset.src = ""; }
+  }
+
+  function setCoinView(view) {
+    const live = view === "live";
+    state.coinView = live ? "live" : "chart";
+    document.querySelectorAll("#coinViewSeg [data-cview]").forEach((b) => b.classList.toggle("on", b.dataset.cview === state.coinView));
+    const chart = $("#coinChart");
+    const dex = $("#coinDex");
+    const tf = $("#coinTf");
+    if (chart) chart.hidden = live;
+    if (tf) tf.hidden = live;
+    if (dex) {
+      dex.hidden = !live;
+      if (live && state.coinMint) {
+        const src = window.BuddyChart ? BuddyChart.dexUrl(coinChain(state.coinMint), (BuddyChart.coinPool() || coinPool(state.coinMint, state.coinTrade)) || state.coinMint, true) : "";
+        if (src && dex.dataset.src !== src) {
+          dex.dataset.src = src;
+          dex.innerHTML = '<iframe title="DexScreener live chart" loading="lazy" referrerpolicy="no-referrer" src="' + esc(src) + '"></iframe>';
+        }
+      }
+    }
+    const note = $("#coinChartNote");
+    if (note) note.hidden = live || !note.textContent;
+  }
+
+  function renderCoinChart(t, mark) {
+    const host = $("#coinChart");
+    const note = $("#coinChartNote");
+    const card = $("#coinChartCard");
+    const dexBtn = $("#coinDexLink");
+    const mint = t.mint || "";
+    if (dexBtn) {
+      const href = dexHref(mint, t);
+      dexBtn.hidden = !href;
+      if (href) dexBtn.href = href;
+    }
+    if (!host) return;
+    const samples = mark && mark.samples && mark.samples.length >= 2 ? mark.samples : [];
+    if (!mint || !window.BuddyChart || !BuddyChart.ok()) {
+      if (card) card.hidden = !samples.length;
+      host.innerHTML = samples.length && window.BuddyMarks ? BuddyMarks.chartSvg(samples) : "";
+      if (note) note.hidden = true;
+      return;
+    }
+    if (card) card.hidden = false;
+    const fresh = state.coinMint !== mint;
+    state.coinMint = mint;
+    state.coinTrade = t;
+    const mode = (state.data && String(state.data.mode || "").toUpperCase() === "REAL") ? "REAL" : "PAPER";
+    BuddyChart.coinChart(host, {
+      mint: mint,
+      chain: coinChain(mint),
+      pool: coinPool(mint, t),
+      trades: coinFillsFor(mint),
+      samples: samples,
+      mode: mode,
+      onStatus: (text) => {
+        if (!note) return;
+        note.textContent = text || "";
+        note.hidden = state.coinView === "live" || !text;
+      }
+    });
+    const tf = BuddyChart.coinTf();
+    document.querySelectorAll("#coinTf [data-tf]").forEach((b) => b.classList.toggle("on", b.dataset.tf === tf));
+    if (fresh) {
+      unloadDexEmbed();
+      setCoinView(state.coinView === "live" ? "live" : "chart");
+    }
+  }
+
   function renderCoin(t) {
     const logoHost = $("#coinLogoHost");
     if (logoHost) {
@@ -1299,14 +1420,7 @@
       pct.textContent = shownPct == null ? "—" : signedPct(shownPct);
       row.append(usd, sep, pct);
     }
-    const chart = $("#coinChart");
-    const chartNote = $("#coinChartNote");
-    if (chart) {
-      const samples = mark && mark.samples && mark.samples.length >= 2 ? mark.samples : [];
-      chart.innerHTML = samples.length && window.BuddyMarks ? BuddyMarks.chartSvg(samples) : "";
-      chart.hidden = !samples.length;
-    }
-    if (chartNote) chartNote.hidden = true;
+    renderCoinChart(t, mark);
     const fresh = mark ? freshLabel(mark) : null;
     const rows = mark ? [
       ["Entry", mark.entry == null ? "unknown" : price(mark.entry)],
@@ -1460,7 +1574,9 @@
     const sig = rangeKey + "|" + tone + "|" + (startBal == null ? "" : startBal) + "|" + points.map((p) => (p.ts || 0) + ":" + p.balance).join(",");
     if (state.chartSig !== sig) {
       state.chartSig = sig;
-      $("#chart").innerHTML = chartSvg(points, startBal, tone);
+      const drawn = window.BuddyChart && BuddyChart.ok() && BuddyChart.equity($("#chart"), points, startBal, rangeKey);
+      if (!drawn) $("#chart").innerHTML = chartSvg(points, startBal, tone);
+      $("#chartWrap").classList.toggle("dx", !!drawn);
     }
     document.querySelectorAll("#chartRanges [data-range]").forEach((b) => {
       b.classList.toggle("on", b.dataset.range === rangeKey);
@@ -1829,6 +1945,18 @@
       requestRestart(restart);
       return;
     }
+    const tfBtn = e.target.closest("#coinTf [data-tf]");
+    if (tfBtn) {
+      if (window.BuddyChart) BuddyChart.setCoinTf(tfBtn.dataset.tf);
+      document.querySelectorAll("#coinTf [data-tf]").forEach((b) => b.classList.toggle("on", b === tfBtn));
+      return;
+    }
+    const cview = e.target.closest("#coinViewSeg [data-cview]");
+    if (cview) {
+      setCoinView(cview.dataset.cview);
+      return;
+    }
+    if (e.target.closest("a.dex")) return;
     const range = e.target.closest("#chartRanges [data-range]");
     if (range) {
       const next = range.dataset.range;
