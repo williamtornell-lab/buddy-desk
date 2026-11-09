@@ -2125,7 +2125,7 @@
     BuddyCopy.hooks.request = (on) => openDeskConfirm({ type: "copy", on: !!on });
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v38";
+      BuddySettings.hooks.version = "app v39";
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {

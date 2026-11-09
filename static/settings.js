@@ -114,6 +114,12 @@
     var openKeys = hooks.openKeys ? hooks.openKeys() : [];
     html += card("Paper trades", '<button type="button" class="set-btn danger" data-close-all' + (openKeys.length ? "" : " disabled") + ">Close all " + (openKeys.length || "") + " paper trades</button>");
 
+    // Maintenance (works even when main.py is dead — external ntfy listener)
+    html += card("Maintenance",
+      '<p class="set-group">Self-heal</p>' +
+      '<div class="set-row"><div class="set-txt"><span class="set-name">Restart everything</span><span class="set-sub">Relaunches the desk, publish and live feed. Works even if the desk is down.</span></div></div>' +
+      '<button type="button" class="set-btn danger" data-restart-everything>Restart everything</button>');
+
     // App info
     var lm = ds.last_msg;
     html += card("App",
@@ -196,6 +202,11 @@
       if (!keys.length) return true;
       ask({ title: "Close all " + keys.length + " paper trades?", body: "Sells every open PAPER position at the latest price. REAL is not touched.", ok: "Close all", danger: true,
         cmds: keys.map(function (k) { return "close:" + k; }), toast: "Close sent" });
+      return true;
+    }
+    if (e.target.closest("[data-restart-everything]")) {
+      ask({ title: "Restart everything?", body: "Stops and relaunches the desk, publish loop and live feed. Open PAPER trades stay in the database and are picked up again. REAL stays alerts-only. Works even if the desk is currently down.",
+        ok: "Restart everything", danger: true, cmds: ["restart:everything"], toast: "Restart everything sent" });
       return true;
     }
     return false;
