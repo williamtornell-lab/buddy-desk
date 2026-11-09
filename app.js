@@ -1138,10 +1138,17 @@
       return;
     }
     if (action.type === "scalp") {
-      const nm = action.sub === "quick" ? "Quick" : "Runner";
+      const nm = action.sub === "quick" ? "Quick" : action.sub === "runner" ? "Runner" : action.sub === "moonshot" ? "Moonshot" : String(action.sub || "Sub");
+      const blurb = action.sub === "quick"
+        ? " takes the same entries as Scalping with its own $20 position (TP +5%, 4 min)."
+        : action.sub === "runner"
+        ? " takes the same entries as Scalping with its own $20 position (TP +25%, trail 8% after +12%, 20 min)."
+        : action.sub === "moonshot"
+        ? " takes only the strongest Scalping entries ($10, max 2): LP locked, top10 <25%, liq ≥$20k, mcap <$500k, strong buying. Exits: 50% at +200%, rest at +1000% or 30% trail, stop −30%, max 3 days."
+        : " PAPER sub-bot.";
       title.textContent = (action.on ? "Turn on " : "Turn off ") + nm + "?";
       body.textContent = action.on
-        ? "PAPER only. " + nm + " takes the same entries as Scalping with its own $20 position" + (action.sub === "quick" ? " (TP +5%, 4 min)." : " (TP +25%, trail 8% after +12%, 20 min).")
+        ? "PAPER only. " + nm + blurb
         : "Stops new " + nm + " entries. Open " + nm + " trades still exit by their rules.";
       ok.textContent = action.on ? "Turn on" : "Turn off";
       ok.classList.remove("danger");
@@ -1222,7 +1229,7 @@
         const sent = await postDesk("scalp:" + action.sub + ":" + (action.on ? "on" : "off"));
         if (sent) {
           if (window.BuddyStyles && BuddyStyles.markSubPending) BuddyStyles.markSubPending(action.sub, action.on);
-          showToast((action.sub === "quick" ? "Quick" : "Runner") + (action.on ? " on" : " off"), false);
+          showToast((action.sub === "quick" ? "Quick" : action.sub === "runner" ? "Runner" : action.sub === "moonshot" ? "Moonshot" : action.sub) + (action.on ? " on" : " off"), false);
           if (state.data) render();
           window.setTimeout(load, 1500);
         }
@@ -2129,7 +2136,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v46";
+      BuddySettings.hooks.version = "app v47";
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {

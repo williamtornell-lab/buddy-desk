@@ -94,9 +94,9 @@
         body += '<p class="set-group">Copy top traders</p>' + ["buy_usd", "max_open"].filter(function (k) { return cp[k]; }).map(function (k) { return stepper("copy", k, cp[k]); }).join("");
       }
       var subs = s.scalp_subs || {};
-      if (m.name === "scalping" && (subs.quick || subs.runner)) {
+      if (m.name === "scalping" && (subs.quick || subs.runner || subs.moonshot)) {
         body += '<p class="set-group">Scalp sub-bots</p>' +
-          ["quick", "runner"].filter(function (k) { return subs[k]; }).map(function (k) {
+          ["quick", "runner", "moonshot"].filter(function (k) { return subs[k]; }).map(function (k) {
             return sw("sub:" + k, !!subs[k].enabled, subs[k].label, subs[k].line);
           }).join("");
       }

@@ -264,7 +264,7 @@
     }
     var subs = s && s.scalp_subs;
     if (isActive && shown.name === "scalping" && subs && typeof subs === "object") {
-      html += '<div class="sub-rows">' + ["quick", "runner"].filter(function (k) { return subs[k]; }).map(function (k) {
+      html += '<div class="sub-rows">' + ["quick", "runner", "moonshot"].filter(function (k) { return subs[k]; }).map(function (k) {
         var b = subs[k];
         var on = !!b.enabled;
         var p = subPending[k];
@@ -284,7 +284,7 @@
   function subTag(t) {
     var sb = t && t.sub_bot;
     if (!sb) {
-      var m = String((t && t.strategy) || "").match(/^paper_mode:scalping:(quick|runner)$/);
+      var m = String((t && t.strategy) || "").match(/^paper_mode:scalping:(quick|runner|moonshot)$/);
       if (m) sb = m[1];
     }
     if (!sb && t && typeof t.pos_key === "string" && t.pos_key.indexOf("~") > 0) sb = t.pos_key.split("~")[1];
