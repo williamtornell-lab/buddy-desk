@@ -120,11 +120,13 @@
     var oldPos = Array.isArray(s.positions) ? s.positions : [];
     var isPaper = function (p) { return !/FOMO|REAL|WALLET|LIVE/i.test(String(p.mode || p.source || "PAPER")); };
     var livePos = (snap.positions || []).map(function (sp) {
-      var old = oldPos.find(function (p) { return p.mint === sp.mint && Number(p.opened_at) === Number(sp.opened_at); }) || {};
+      var spId = sp.pos_key || sp.mint;
+      var old = oldPos.find(function (p) { return (p.pos_key || p.mint) === spId && Number(p.opened_at) === Number(sp.opened_at); }) || {};
       var row = Object.assign({}, old, {
         mint: sp.mint, name: sp.name || old.name, symbol: sp.symbol || old.symbol, status: sp.status || "open",
         entry: sp.entry, size_usd: sp.size_usd, opened_at: sp.opened_at, stop_pct: sp.stop_pct,
-        mode: sp.mode || old.mode || "PAPER", strategy: sp.strategy || old.strategy || ""
+        mode: sp.mode || old.mode || "PAPER", strategy: sp.strategy || old.strategy || "",
+        pos_key: sp.pos_key || old.pos_key || undefined, sub_bot: sp.sub_bot || old.sub_bot || undefined
       });
       if (sp.price) {
         row.mark_price = sp.price; row.mark_fetched_at = sp.price_ts; row.mark_source = sp.price_src || "desk_live";
@@ -135,14 +137,14 @@
     out.positions = livePos.concat(oldPos.filter(function (p) { return !isPaper(p); }));
     if (Array.isArray(s.trades)) {
       var trades = s.trades.map(function (t) { return t; });
-      var same = function (t, r) { return t.mint === r.mint && Math.abs((Number(t.opened_at) || 0) - (Number(r.opened_at) || 0)) < 1; };
+      var same = function (t, r) { return (t.pos_key || t.mint) === (r.pos_key || r.mint) && Math.abs((Number(t.opened_at) || 0) - (Number(r.opened_at) || 0)) < 1; };
       (snap.closed || []).forEach(function (c) {
         var i = trades.findIndex(function (t) { return same(t, c); });
         var row = {
           mint: c.mint, name: c.name, symbol: c.symbol, side_or_status: "closed", entry: c.entry, exit: c.exit,
           size_usd: c.size_usd, pnl_usd: c.pnl_usd, pnl_pct: c.pnl_usd != null && c.size_usd ? c.pnl_usd / c.size_usd * 100 : null,
           fees_usd: c.fees_usd, opened_at: c.opened_at, closed_at: c.closed_at, exit_reason: c.exit_reason,
-          strategy: c.strategy, mode: c.mode || "PAPER", paper_mode: String(c.strategy || "").replace(/^paper_mode:/, "") || undefined
+          strategy: c.strategy, pos_key: c.pos_key || undefined, sub_bot: c.sub_bot || undefined, mode: c.mode || "PAPER", paper_mode: String(c.strategy || "").replace(/^paper_mode:/, "") || undefined
         };
         if (i >= 0) {
           if (String(trades[i].side_or_status || "").toLowerCase() === "open") trades[i] = Object.assign({}, trades[i], row);
@@ -153,7 +155,7 @@
         trades.unshift({
           mint: sp.mint, name: sp.name, symbol: sp.symbol, side_or_status: "open", entry: sp.entry, exit: null,
           size_usd: sp.size_usd, pnl_usd: null, pnl_pct: null, fees_usd: null, opened_at: sp.opened_at, closed_at: null,
-          exit_reason: null, strategy: sp.strategy, mode: sp.mode || "PAPER",
+          exit_reason: null, strategy: sp.strategy, pos_key: sp.pos_key || undefined, sub_bot: sp.sub_bot || undefined, mode: sp.mode || "PAPER",
           paper_mode: String(sp.strategy || "").replace(/^paper_mode:/, "") || undefined
         });
       });

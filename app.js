@@ -925,7 +925,7 @@
       '<span class="oc-grid">' + cell("Entry", entry) + cell("Now", nowPx, nowTone) + cell("Value", value) + "</span>" +
       "</button>" +
       '<span class="oc-links">' +
-      (realRow || !t.mint ? "" : '<button type="button" class="paper-sell" data-sell="' + esc(t.mint) + '" data-sell-name="' + esc(displayTicker(t)) + '">Sell</button>') +
+      (realRow || !t.mint ? "" : '<button type="button" class="paper-sell" data-sell="' + esc(t.pos_key || t.mint) + '" data-sell-name="' + esc(displayTicker(t)) + '">Sell</button>') +
       dexLink(t.mint, t) + fomoLink(t.link, "FOMO", t.mint) + "</span>" +
       "</div>"
     );
@@ -1127,6 +1127,17 @@
       box.hidden = false;
       return;
     }
+    if (action.type === "scalp") {
+      const nm = action.sub === "quick" ? "Quick" : "Runner";
+      title.textContent = (action.on ? "Turn on " : "Turn off ") + nm + "?";
+      body.textContent = action.on
+        ? "PAPER only. " + nm + " takes the same entries as Scalping with its own $20 position" + (action.sub === "quick" ? " (TP +5%, 4 min)." : " (TP +25%, trail 8% after +12%, 20 min).")
+        : "Stops new " + nm + " entries. Open " + nm + " trades still exit by their rules.";
+      ok.textContent = action.on ? "Turn on" : "Turn off";
+      ok.classList.remove("danger");
+      box.hidden = false;
+      return;
+    }
     if (action.type === "copy") {
       title.textContent = action.on ? "Turn copy trading on?" : "Turn copy trading off?";
       body.textContent = action.on
@@ -1178,6 +1189,16 @@
         if (sent) {
           BuddyStyles.markPending(name);
           showToast((action.label || name) + " sent · new trades only", false);
+          if (state.data) render();
+          window.setTimeout(load, 1500);
+        }
+        return;
+      }
+      if (action.type === "scalp") {
+        const sent = await postDesk("scalp:" + action.sub + ":" + (action.on ? "on" : "off"));
+        if (sent) {
+          if (window.BuddyStyles && BuddyStyles.markSubPending) BuddyStyles.markSubPending(action.sub, action.on);
+          showToast((action.sub === "quick" ? "Quick" : "Runner") + (action.on ? " on" : " off"), false);
           if (state.data) render();
           window.setTimeout(load, 1500);
         }
@@ -2077,6 +2098,7 @@
   }
   if (window.BuddyCopy) {
     BuddyCopy.hooks.request = (on) => openDeskConfirm({ type: "copy", on: !!on });
+    if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
   }
   if (window.BuddyAdaptive) {
     BuddyAdaptive.hooks.post = async (level) => {

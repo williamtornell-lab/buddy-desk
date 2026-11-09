@@ -1642,3 +1642,13 @@ header { background: rgba(0, 0, 0, 0.92); }
 .ad-cand a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; }
 .ad-q { font-size: 11px; color: #30d158; }
 .ad-q.no { color: var(--muted); }
+
+/* Scalping sub-bots (Quick / Runner) */
+.sub-rows { margin-top: 4px; }
+.sub-row { display: flex; align-items: center; gap: 8px; min-height: 34px; }
+.sub-name { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 680; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sub-line { color: var(--muted); font-weight: 600; }
+.sub-open { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cr-switch.mini { width: 36px; height: 21px; }
+.cr-switch.mini .cr-knob { width: 15px; height: 15px; }
+.cr-switch.mini.on .cr-knob { transform: translateX(15px); }

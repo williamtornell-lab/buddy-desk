@@ -17,7 +17,8 @@
     "max_hold", "max_hold_h", "max_hold_min", "hold", "max_open", "max_positions"];
 
   var view = { preview: null, pending: null, pendingAt: 0, lastActive: null };
-  var hooks = { requestSwitch: null, toast: null };
+  var hooks = { requestSwitch: null, toast: null, requestSub: null };
+  var subPending = {};
 
   function $(s) { return document.querySelector(s); }
   function esc(s) {
@@ -211,6 +212,7 @@
   }
   function tagHtml(t, s) {
     if (root.BuddyCopy) { var ch = root.BuddyCopy.tagHtml(t); if (ch) return ch; }
+    var sbt = subTag(t); if (sbt) return sbt;
     var n = tradeModeName(t);
     if (!n || RESERVED[n]) return "";
     var list = modesOf(s);
@@ -260,10 +262,41 @@
           return "<div><dt>" + esc(r[0] || "") + "</dt><dd>" + esc(r[1]) + "</dd></div>";
         }).join("") + "</dl>" : "") + "</div>";
     }
+    var subs = s && s.scalp_subs;
+    if (isActive && shown.name === "scalping" && subs && typeof subs === "object") {
+      html += '<div class="sub-rows">' + ["quick", "runner"].filter(function (k) { return subs[k]; }).map(function (k) {
+        var b = subs[k];
+        var on = !!b.enabled;
+        var p = subPending[k];
+        if (p && (p.on === on || Date.now() - p.at > 90000)) { delete subPending[k]; p = null; }
+        var shownOn = p ? p.on : on;
+        var openN = Number(b.open) || 0;
+        return '<div class="sub-row"><span class="sub-name">' + esc(b.label || k) + '<span class="sub-line"> · ' + esc(b.line || "") + "</span></span>" +
+          (shownOn && openN ? '<span class="sub-open">' + openN + " open</span>" : "") +
+          '<button type="button" class="cr-switch mini' + (shownOn ? " on" : "") + (p ? " busy" : "") + '" role="switch" aria-checked="' + on + '"' +
+          ' aria-label="' + esc(b.label || k) + '" data-sub="' + esc(k) + '" data-sub-on="' + (on ? "1" : "0") + '"' + (p ? " disabled" : "") +
+          '><span class="cr-knob"></span></button></div>';
+      }).join("") + "</div>";
+    }
     $("#styleBody").innerHTML = html;
   }
 
+  function subTag(t) {
+    var sb = t && t.sub_bot;
+    if (!sb) {
+      var m = String((t && t.strategy) || "").match(/^paper_mode:scalping:(quick|runner)$/);
+      if (m) sb = m[1];
+    }
+    if (!sb && t && typeof t.pos_key === "string" && t.pos_key.indexOf("~") > 0) sb = t.pos_key.split("~")[1];
+    return sb ? '<span class="style-tag st-scalping">Scalp · ' + esc(sb.charAt(0).toUpperCase() + sb.slice(1)) + "</span>" : "";
+  }
+
   function onClick(e, s) {
+    var sw = e.target.closest("[data-sub]");
+    if (sw) {
+      if (!sw.disabled && hooks.requestSub) hooks.requestSub({ sub: sw.getAttribute("data-sub"), on: sw.getAttribute("data-sub-on") !== "1" });
+      return true;
+    }
     var b = e.target.closest("[data-style]");
     if (b) { view.preview = b.getAttribute("data-style"); render(s); return true; }
     var u = e.target.closest("[data-style-use]");
@@ -281,10 +314,11 @@
   }
 
   function markPending(name) { view.pending = name; view.pendingAt = Date.now(); }
+  function markSubPending(sub, on) { subPending[sub] = { on: !!on, at: Date.now() }; }
 
   root.BuddyStyles = {
     modesOf: modesOf, activeOf: activeOf, ruleRows: ruleRows, sizeText: sizeText,
     tradeModeName: tradeModeName, tagHtml: tagHtml, render: render, onClick: onClick,
-    markPending: markPending, hooks: hooks, RESERVED: RESERVED
+    markPending: markPending, markSubPending: markSubPending, hooks: hooks, RESERVED: RESERVED
   };
 })(typeof window !== "undefined" ? window : globalThis);
