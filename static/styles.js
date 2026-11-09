@@ -70,11 +70,26 @@
     if (m.short) return m.short;
     var l = m.label;
     if (/aggressive/i.test(l)) return "Aggressive";
-    if (/long/i.test(l)) return "Long term";
-    if (/scalp/i.test(l)) return "Scalping";
+    if (/long/i.test(l)) return "Long";
+    if (/scalp/i.test(l)) return "Scalp";
     if (/passive/i.test(l)) return "Passive";
     if (/adaptive/i.test(l)) return "Adaptive";
     return l.length > 12 ? l.slice(0, 11) + "…" : l;
+  }
+
+  /* One short line of key numbers: "$20 · TP +10% · Stop −3% · 8 min". */
+  function keyLine(m) {
+    var r = (m && m.raw) || {}, bits = [];
+    var sz = r.size && typeof r.size === "object" ? r.size : null;
+    if (sz && sz.buy_usd != null) {
+      var adds = Array.isArray(sz.adds) ? sz.adds : [];
+      bits.push(usd(sz.buy_usd) + adds.map(function (a) { return "+" + usd(a.usd); }).join(""));
+    }
+    if (Array.isArray(r.tps) && r.tps.length && r.tps[0].pct != null) bits.push("TP +" + pctTxt(r.tps[0].pct));
+    if (r.stop_pct != null) bits.push("Stop \u2212" + pctTxt(r.stop_pct));
+    if (r.max_hold) bits.push(String(r.max_hold));
+    else if (r.max_hold_s != null) bits.push(Math.round(r.max_hold_s / 60) + " min");
+    return bits.join(" · ");
   }
 
   function usd(v) {
@@ -222,29 +237,28 @@
     for (var i = 0; i < list.length; i++) if (list[i].name === view.preview) shown = list[i];
     if (!shown) shown = active || list[0];
 
-    $("#styleActive").textContent = view.pending ? "Switching…" : (active ? active.label : "Not set");
+    $("#styleActive").textContent = view.pending ? "Switching…" : "";
     $("#styleActive").className = "style-active" + (view.pending ? " pending" : "");
     var seg = $("#styleSeg");
     seg.innerHTML = list.map(function (m) {
       var cls = (m.name === shown.name ? " on" : "") + (m.name === activeName ? " live" : "");
-      return '<button type="button" class="' + cls.trim() + '" data-style="' + esc(m.name) + '" aria-pressed="' + (m.name === shown.name) + '">' +
-        esc(shortLabel(m)) + "</button>";
+      return '<button type="button" class="' + cls.trim() + '" data-style="' + esc(m.name) + '" aria-pressed="' + (m.name === shown.name) + '"' +
+        ' title="' + esc(m.label) + '">' + esc(shortLabel(m)) + "</button>";
     }).join("");
     var rows = ruleRows(shown.rules);
     var isActive = shown.name === activeName;
-    var html = '<div class="style-desc">' +
-      '<p class="style-name">' + esc(shown.label) + (isActive ? ' <span class="style-on">active</span>' : "") + "</p>" +
-      (shown.description ? '<p class="style-text">' + esc(shown.description) + "</p>" : "") + "</div>";
-    if (rows.length) {
-      html += '<details class="style-rules"' + (view.open ? " open" : "") + "><summary>How it trades</summary><dl>" +
-        rows.map(function (r) {
-          return "<div>" + (r[0] ? "<dt>" + esc(r[0]) + "</dt>" : "<dt></dt>") + "<dd>" + esc(r[1]) + "</dd></div>";
-        }).join("") + "</dl></details>";
-    }
+    var line = keyLine(shown) || shown.label;
+    var html = '<div class="style-line-row"><button type="button" class="style-line' + (view.open ? " open" : "") + '" data-style-more aria-expanded="' + !!view.open + '">' +
+      '<span class="style-key">' + esc(line) + "</span></button>";
     if (!isActive) {
-      html += '<button type="button" class="style-use" data-style-use="' + esc(shown.name) + '"' + (view.pending ? " disabled" : "") + ">" +
-        "Use " + esc(shown.label) + "</button>" +
-        '<p class="style-note">Applies to new trades only. Open trades keep their rules.</p>';
+      html += '<button type="button" class="style-use" data-style-use="' + esc(shown.name) + '"' + (view.pending ? " disabled" : "") + ">Use</button>";
+    }
+    html += "</div>";
+    if (view.open) {
+      html += '<div class="style-more">' + (shown.description ? '<p class="style-text">' + esc(shown.description) + "</p>" : "") +
+        (rows.length ? "<dl>" + rows.map(function (r) {
+          return "<div><dt>" + esc(r[0] || "") + "</dt><dd>" + esc(r[1]) + "</dd></div>";
+        }).join("") + "</dl>" : "") + "</div>";
     }
     $("#styleBody").innerHTML = html;
   }
@@ -261,8 +275,8 @@
       hooks.requestSwitch({ name: m.name, label: m.label });
       return true;
     }
-    var d = e.target.closest(".style-rules summary");
-    if (d) { view.open = !d.parentNode.open; return false; }
+    var d = e.target.closest("[data-style-more]");
+    if (d) { view.open = !view.open; render(s); return true; }
     return false;
   }
 
