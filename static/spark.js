@@ -126,8 +126,14 @@
     }
     if (keep.length > 4) {
       var sm = keep.map(function (p) { return { ts: p.ts, v: p.v }; });
-      for (var k = 1; k < keep.length - 1; k++) sm[k].v = keep[k - 1].v * 0.2 + keep[k].v * 0.6 + keep[k + 1].v * 0.2;
-      keep = sm;
+      // median-of-3 drops one-tick spikes (a single bad quote), then a light blend
+      for (var k = 1; k < keep.length - 1; k++) {
+        var tri = [keep[k - 1].v, keep[k].v, keep[k + 1].v].sort(function (x, y) { return x - y; });
+        sm[k].v = tri[1];
+      }
+      var sm2 = sm.map(function (p) { return { ts: p.ts, v: p.v }; });
+      for (var q = 1; q < sm.length - 1; q++) sm2[q].v = sm[q - 1].v * 0.2 + sm[q].v * 0.6 + sm[q + 1].v * 0.2;
+      keep = sm2;
     }
     return keep;
   }
@@ -174,7 +180,11 @@
     var m = [], dx = [], dy = [], s = [], i;
     for (i = 0; i < n - 1; i++) { dx[i] = xy[i + 1][0] - xy[i][0]; dy[i] = xy[i + 1][1] - xy[i][1]; s[i] = dx[i] ? dy[i] / dx[i] : 0; }
     m[0] = s[0]; m[n - 1] = s[n - 2];
-    for (i = 1; i < n - 1; i++) m[i] = s[i - 1] * s[i] <= 0 ? 0 : (s[i - 1] + s[i]) / 2;
+    // Fritsch-Butland tangents: bounded, so uneven x spacing can't overshoot.
+    for (i = 1; i < n - 1; i++) {
+      if (s[i - 1] * s[i] <= 0) { m[i] = 0; continue; }
+      m[i] = 3 * (dx[i - 1] + dx[i]) / ((2 * dx[i] + dx[i - 1]) / s[i - 1] + (dx[i] + 2 * dx[i - 1]) / s[i]);
+    }
     for (i = 0; i < n - 1; i++) {
       var h = dx[i] / 3;
       d += " C" + (xy[i][0] + h).toFixed(2) + " " + (xy[i][1] + m[i] * h).toFixed(2) + " " +
