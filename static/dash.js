@@ -80,6 +80,8 @@
   var holdUntil = {}; /* stage -> ts ms; freeze row text while name is sliding away */
   var reduceMotion = false;
   try { reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e0) {}
+  var scanCycle = { items: [], i: 0, timer: 0, lastSig: "" };
+  var SCAN_MS = 1000;
 
   function agentTone(a) {
     if (!a || a.paused) return "bad";
@@ -268,6 +270,82 @@
     });
   }
 
+
+  function gatherScanItems(s) {
+    var items = [], have = {};
+    function add(mint, symbol, ok, ts, reason) {
+      if (!mint) return;
+      var m = String(mint);
+      if (have[m]) return;
+      have[m] = 1;
+      items.push({
+        mint: m,
+        symbol: cleanSym(symbol) || m.slice(0, 4).toUpperCase(),
+        ok: !!ok,
+        ts: num(ts) || 0,
+        reason: reason || ""
+      });
+    }
+    var livePipe = Array.isArray(s.pipeline) ? s.pipeline
+      : (s.dashboard && Array.isArray(s.dashboard.pipeline) ? s.dashboard.pipeline : null);
+    if (livePipe) livePipe.forEach(function (e) {
+      if (e.stage !== "scanner") return;
+      add(e.mint, e.symbol, e.ok !== false && e.ok !== 0, e.ts, e.reason);
+    });
+    var d = s.dashboard || {};
+    (Array.isArray(d.log) ? d.log : []).forEach(function (r) {
+      if (r.agent !== "scanner") return;
+      add(r.mint, r.symbol, r.tone === "pass" || r.tone === "buy", r.ts, r.reason || r.text);
+    });
+    (Array.isArray(s.activity) ? s.activity : []).forEach(function (a) {
+      if (a.kind !== "scan") return;
+      var title = String(a.title || "");
+      var fail = /^killed/i.test(title);
+      add(a.mint, "", !fail, a.ts, a.detail || title);
+    });
+    items.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+    return items.slice(0, 40);
+  }
+
+  function paintScannerAct(act, item) {
+    if (!act || !item) return;
+    var reason = item.ok ? "new pair" : shortScanReason(item.reason);
+    var tone = item.ok ? "pass" : "kill";
+    act.className = "dk-act tone-" + tone;
+    act.setAttribute("data-mint", item.mint);
+    act.innerHTML = '<span class="dk-nm ' + (item.ok ? "pass" : "kill") + '">$' + esc(item.symbol) + "</span> " +
+      esc(item.ok ? "✓ " + reason : ("× " + reason));
+  }
+
+  function shortScanReason(reason) {
+    var r = String(reason || "").trim();
+    var low = r.toLowerCase();
+    if (!low) return "scanned";
+    if (/liq|liquidity/.test(low)) return "low liq";
+    if (/top\s*10/.test(low)) return "top 10";
+    if (/never qual/.test(low)) return "unqual";
+    if (/holder/.test(low)) return "no hold";
+    var base = r.replace(/\(.*$/, "").trim();
+    return base.length > 18 ? base.slice(0, 17) + "…" : base;
+  }
+
+  function tickScanner(host) {
+    if (!host || reduceMotion) return;
+    if ((holdUntil.scanner || 0) > Date.now()) return; /* pass-slide owns the row */
+    if (!scanCycle.items.length) return;
+    scanCycle.i = (scanCycle.i + 1) % scanCycle.items.length;
+    var act = host.querySelector('.dk-row[data-agent="scanner"] .dk-act');
+    paintScannerAct(act, scanCycle.items[scanCycle.i]);
+  }
+
+  function ensureScanTimer(host) {
+    if (scanCycle.timer || reduceMotion) return;
+    scanCycle.timer = window.setInterval(function () {
+      var h = $("#deskAgents");
+      if (h) tickScanner(h);
+    }, SCAN_MS);
+  }
+
   function renderAgents(s) {
     var host = $("#deskAgents");
     if (!host) return;
@@ -281,6 +359,15 @@
     $("#deskCounts").textContent = (num(d.scanned) || 0) + " scanned · " + (num(d.traded) || 0) + " traded";
 
     notePasses(s);
+
+    var scans = gatherScanItems(s);
+    var sig = scans.map(function (x) { return x.mint + (x.ok ? "1" : "0"); }).join(",");
+    if (sig !== scanCycle.lastSig) {
+      scanCycle.items = scans;
+      scanCycle.lastSig = sig;
+      if (scanCycle.i >= scans.length) scanCycle.i = 0;
+    }
+    ensureScanTimer(host);
 
     var now = Date.now();
     var html = list.map(function (a) {
@@ -302,11 +389,20 @@
         body = null; /* preserve via rebuild avoidance — fall through to full html still, but mark */
       }
       var actInner = actHtml(sym, txt);
+      var actTone = info.tone || "idle";
+      if (a.key === "scanner" && scanCycle.items.length && (holdUntil.scanner || 0) <= now) {
+        var it = scanCycle.items[scanCycle.i % scanCycle.items.length];
+        sym = it.symbol;
+        actTone = it.ok ? "pass" : "kill";
+        actInner = '<span class="dk-nm ' + (it.ok ? "pass" : "kill") + '">$' + esc(it.symbol) + "</span> " +
+          esc(it.ok ? "✓ new pair" : ("× " + shortScanReason(it.reason)));
+        if (it.mint) info = Object.assign({}, info, { mint: it.mint });
+      }
       return '<div class="dk-row' + (stale ? " stale" : "") + '" data-agent="' + esc(a.key) + '">' +
         '<span class="dk-icon" style="--c:' + a.color + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + a.icon + "</svg>" +
         '<i class="dk-dot ' + tone + '"></i></span>' +
         '<span class="dk-name"><b>' + esc(a.name) + '</b><small>' + esc(status) + "</small></span>" +
-        '<span class="dk-act tone-' + esc(info.tone || "idle") + (fresh ? " flash" : "") + '"' +
+        '<span class="dk-act tone-' + esc(actTone) + (fresh ? " flash" : "") + '"' +
         (info.mint ? ' data-mint="' + esc(info.mint) + '"' : "") +
         (holding ? ' data-hold="1"' : "") + ">" + actInner + "</span>" +
         (stale
@@ -348,11 +444,13 @@
       var meta = null;
       for (var i = 0; i < AGENTS.length; i++) if (AGENTS[i].key === r.agent) meta = AGENTS[i];
       var sym = cleanSym(r.symbol);
-      return '<div class="lg-row' + (fresh ? " flash" : "") + '"' + (r.mint ? ' data-mint="' + esc(r.mint) + '"' : "") + ">" +
+      var tone = r.tone || "idle";
+      var symCls = "lg-sym" + (tone === "pass" || tone === "buy" ? " pass" : tone === "kill" ? " kill" : "");
+      return '<div class="lg-row' + (fresh ? " lg-in" : "") + '"' + (r.mint ? ' data-mint="' + esc(r.mint) + '"' : "") + ">" +
         '<span class="lg-time">' + esc(hm(r.ts)) + "</span>" +
         '<span class="lg-body"><b style="color:' + (meta ? meta.color : "#8e8e93") + '">' + esc((meta ? meta.name : r.agent).toUpperCase()) + ":</b> " +
-        (sym ? '<span class="lg-sym">$' + esc(sym) + "</span> " : "") +
-        '<span class="lg-' + esc(r.tone || "idle") + '">' + esc(r.text || "") + "</span>" +
+        (sym ? '<span class="' + symCls + '">$' + esc(sym) + "</span> " : "") +
+        '<span class="lg-' + esc(tone) + '">' + esc(r.text || "") + "</span>" +
         (r.reason ? ' <span class="lg-reason">' + esc(r.reason) + "</span>" : "") +
         "</span></div>";
     }).join("");

@@ -1317,16 +1317,16 @@ body.demo-mode .real-bal { display: none !important; }
 }
 .restart-btn.dk-pill { color: var(--red); }
 
-/* v45 · Desk pass: name turns green, then slides to next row */
+/* v46 · Desk pass: name turns green, then slides to next row */
 .dk-list { position: relative; }
 .dk-act .dk-nm {
   display: inline;
   font-weight: 760;
-  transition: color 700ms ease;
+  transition: color 300ms ease-out;
 }
-.dk-act .dk-nm.pass {
-  color: #30d158;
-}
+.dk-act .dk-nm.pass { color: #30d158; }
+.dk-act .dk-nm.kill { color: #ff453a; }
+/* pass-slide still uses longer green hold via .pass before slide */
 .dk-slide {
   position: absolute;
   z-index: 6;
@@ -1341,8 +1341,9 @@ body.demo-mode .real-bal { display: none !important; }
   opacity: 1;
 }
 @media (prefers-reduced-motion: reduce) {
-  .dk-act .dk-nm { transition: none !important; }
+  .dk-act .dk-nm, .lg-sym { transition: none !important; }
   .dk-slide { display: none !important; }
+  .lg-row.lg-in { animation: none !important; }
 }
 
 
@@ -1359,6 +1360,14 @@ body.demo-mode .real-bal { display: none !important; }
 .lg-body b { font-weight: 800; }
 .lg-sym { color: #e5e5ea; font-weight: 700; }
 .lg-kill { color: var(--red); font-weight: 700; }
+.lg-sym { transition: color 300ms ease-out; }
+.lg-sym.pass { color: #30d158; }
+.lg-sym.kill { color: #ff453a; }
+.lg-row.lg-in { animation: lg-in 300ms ease-out; }
+@keyframes lg-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 .lg-pass { color: var(--green); font-weight: 700; }
 .lg-buy { color: var(--green); font-weight: 700; }
 .lg-reason { color: var(--faint); }
