@@ -1697,7 +1697,7 @@ header { background: rgba(0, 0, 0, 0.92); }
 .spark .sp-s0 { stop-opacity: 0.22; }
 
 /* ---- Desk power button + sessions (v40) ---- */
-.desk-power { margin-top: 12px; }
+.desk-power { margin: 2px 0 6px; }
 .desk-power .dp-btn {
   width: 100%; display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 12px;
   padding: 14px 14px; border-radius: var(--radius); border: 1px solid var(--line-strong);

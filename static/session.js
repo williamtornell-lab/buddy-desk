@@ -1,5 +1,5 @@
 /* Buddy desk power button + Desk sessions.
-   Big Desk ON/OFF button on Home sends the existing desk:on / desk:off command
+   The one Desk ON/OFF button (Settings tab) sends the existing desk:on / desk:off command
    (off = no new PAPER buys, open trades still managed). Turning off archives the
    Desk card's session counters on the desk; Insights lists past sessions.
    Display only: balance, trades, equity chart and learning are not touched. */

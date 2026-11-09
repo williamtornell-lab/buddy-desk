@@ -70,7 +70,8 @@
 
     // Desk master switch
     var paused = !!ds.paused;
-    html += card("Desk", sw("desk", !paused, "PAPER trading", paused ? "Paused · open trades still managed" : "New buys on"));
+    // Single Desk on/off control: the big power button, filled in by session.js (BuddySession).
+    html += card("Desk", '<div id="deskPower" class="desk-power ' + (paused ? "off" : "on") + '" aria-label="Desk power"></div>');
 
     // Paper balance
     var chips = [100, 200, 500, 1000].map(function (a) {
