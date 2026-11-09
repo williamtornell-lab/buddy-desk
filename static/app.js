@@ -1303,6 +1303,7 @@
     const t = (state.rows || [])[index];
     if (!t) return;
     state.coinKey = "t" + index;
+    state.coinFocusKey = null;
     renderCoin(t);
     showTab("coin");
   }
@@ -1339,6 +1340,7 @@
     const view = viewForMint(mint);
     if (!view) return;
     state.coinKey = "m" + mint;
+    state.coinFocusKey = null;
     renderCoin(view);
     showTab("coin");
   }
@@ -1410,14 +1412,35 @@
     state.coinMint = mint;
     state.coinTrade = t;
     const mode = (state.data && String(state.data.mode || "").toUpperCase() === "REAL") ? "REAL" : "PAPER";
+    const fills = coinFillsFor(mint);
+    const opened = t && t.opened_at != null && t.entry != null && !t.watched;
+    const focusKey = opened ? String(Number(t.opened_at)) + "|" + String(Number(t.entry)) : "";
+    const focus = opened ? { from: Number(t.opened_at), to: t.closed_at ? Number(t.closed_at) : null } : null;
+    const openRow = fills.find((r) => r.open);
+    const lm = openRow ? liveMark(openRow) : null;
+    const live = lm && lm.unrealized != null ? { pnl: lm.unrealized, pct: lm.pct } : null;
+    const q = window.BuddyDash && BuddyDash.quote ? BuddyDash.quote(mint) : null;
+    if (fresh || state.coinFocusKey == null) state.coinFocusKey = focusKey;
+    const listHost = $("#coinTrades");
+    if (listHost) {
+      const html = BuddyChart.tradeListHtml ? BuddyChart.tradeListHtml(fills, mint, mode, live, state.coinFocusKey) : "";
+      listHost.innerHTML = html ? '<p class="dt-head">Buddy on this coin</p>' + html : "";
+      listHost.hidden = !html;
+    }
     BuddyChart.coinChart(host, {
       mint: mint,
       chain: coinChain(mint),
       pool: coinPool(mint, t),
-      trades: coinFillsFor(mint),
+      trades: fills,
       samples: samples,
       mode: mode,
+      focus: focus,
+      focusKey: state.coinFocusKey || focusKey,
+      live: live,
+      quote: q && q.price != null ? { price: q.price } : null,
       onStatus: (text) => {
+        const cur = BuddyChart.coinTf();
+        document.querySelectorAll("#coinTf [data-tf]").forEach((b) => b.classList.toggle("on", b.dataset.tf === cur));
         if (!note) return;
         note.textContent = text || "";
         note.hidden = state.coinView === "live" || !text;
@@ -1473,7 +1496,7 @@
       ["Fees", t.fees_usd == null ? "" : money(t.fees_usd)],
       ["Opened", t.opened_at ? (clock(t.opened_at) + " · " + rel(t.opened_at)) : ""],
       ["Closed", t.closed_at ? (clock(t.closed_at) + " · " + rel(t.closed_at)) : ""],
-      ["Reason", t.exit_reason ? labelize(t.exit_reason) : ""],
+      ["Reason", t.exit_reason ? (window.BuddyChart && BuddyChart.reasonLabel ? BuddyChart.reasonLabel(t.exit_reason) : labelize(t.exit_reason)) : ""],
       ["Mint", t.mint || ""]
     ];
     const shown = rows.filter((pair) => pair[1]);
@@ -1609,7 +1632,10 @@
     if (window.BuddySpark) {
       try { BuddySpark.render(s, paperPerf, live, liveEquityExtra(s, live)); } catch (e) { /* sparkline is optional */ }
     }
-    const updated = clock(s.ts);
+    const tsU = toUnix(s.ts);
+    const updated = s.live_ts && tsU
+      ? new Date(tsU * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })
+      : clock(s.ts);
     const prefix = (state.fixture || isDemoPreview()) ? "Demo · " : "";
     $("#updated").textContent = prefix + (updated ? "Updated " + updated : "Updated time unknown");
     document.title = "Buddy · " + (live ? (fomoBal == null ? "REAL" : money(fomoBal)) : signedMoney(paperPerf.usd));
@@ -1980,6 +2006,9 @@
           throw new Error("no reachable state");
         }
         state.data = got.data;
+        // Overlay the newest 5s live snapshot (it is usually fresher than state.json).
+        if (window.BuddyLive && BuddyLive.snap()) state.data = BuddyLive.merge(state.data, BuddyLive.snap());
+        startLive(target.id);
       }
       state.fixture = target.kind === "fixture";
       $("#empty").hidden = true;
@@ -2055,6 +2084,14 @@
     const goto = e.target.closest("[data-goto]");
     if (goto) {
       showTab(goto.dataset.goto);
+      return;
+    }
+    const cf = e.target.closest("[data-chart-focus]");
+    if (cf && window.BuddyChart && BuddyChart.focusTrade) {
+      const parts = String(cf.dataset.chartFocus).split(",");
+      state.coinFocusKey = cf.dataset.chartKey || "";
+      document.querySelectorAll("#coinTrades .dt-row").forEach((r) => r.classList.toggle("on", r === cf));
+      BuddyChart.focusTrade(Number(parts[0]), parts[1] ? Number(parts[1]) : null, state.coinFocusKey);
       return;
     }
     const trade = e.target.closest("[data-trade]");
@@ -2155,9 +2192,60 @@
     }
   }
 
+  /* ---- 5s live channel + client price fallback ---- */
+  function liveQuoteFrom(sp) {
+    return {
+      mint: sp.mint, price: sp.price, pair: sp.pair || null, dex: null,
+      requestedAt: sp.price_ts, receivedAt: sp.price_ts, quoteAsOf: null, quoteClock: "unverified",
+      source: sp.price_src === "dexscreener" ? "desk_live_dexscreener" : "desk_live", cacheMaxAgeS: 30, pollS: 5, realtime: false
+    };
+  }
+  function setLiveDot(status) {
+    const dot = $("#liveDot");
+    if (!dot) return;
+    const hasOpen = !!(state.data && Array.isArray(state.data.positions) && state.data.positions.some((p) => p.status === "open"));
+    dot.hidden = status === "off" || !state.data || state.fixture;
+    dot.className = "live-dot " + (status === "live" ? "on" : "fb");
+    dot.title = status === "live"
+      ? "Live: desk snapshot every 5s"
+      : (hasOpen ? "Live stream offline: prices polled every 5s, desk state every ~60s" : "Live stream offline: desk state every ~60s");
+  }
+  function startLive(id) {
+    if (!window.BuddyLive || state.liveStarted) return;
+    state.liveStarted = true;
+    BuddyLive.start(id, {
+      onSnap: (snap) => {
+        if (!state.data || state.fixture) return;
+        state.data = BuddyLive.merge(state.data, snap);
+        (snap.positions || []).forEach((sp) => {
+          if (!sp.price || !sp.mint) return;
+          const held = state.quotes[sp.mint];
+          if (held && held.receivedAt && sp.price_ts && held.receivedAt > sp.price_ts) return;
+          state.quotes[sp.mint] = liveQuoteFrom(sp);
+          const samples = state.sessionSamples[sp.mint] || (state.sessionSamples[sp.mint] = []);
+          const last = samples.length ? samples[samples.length - 1] : null;
+          if (!last || last.price !== sp.price) {
+            samples.push({ ts: sp.price_ts || snap.ts, price: sp.price, kind: "quote" });
+            if (window.BuddyMarks && samples.length > BuddyMarks.MAX_SAMPLES) samples.shift();
+          }
+        });
+        render();
+      },
+      onStatus: setLiveDot
+    });
+  }
+
   load();
   setInterval(load, 3000);
-  setInterval(pollQuotes, 30000);
+  // DexScreener prices for open coins: every 5s while the live stream is down, else every 30s.
+  let lastQuotePoll = 0;
+  setInterval(() => {
+    const live = window.BuddyLive && BuddyLive.status() === "live";
+    const every = live ? 30000 : 5000;
+    if (Date.now() - lastQuotePoll < every) return;
+    lastQuotePoll = Date.now();
+    pollQuotes();
+  }, 1000);
 })();
 
 // Sticky header height → --hdr, so anchors/scrolls and sticky notices clear the header + ticker strip.

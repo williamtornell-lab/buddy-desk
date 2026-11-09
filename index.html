@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=28"/>
+<link rel="stylesheet" href="static/app.css?v=29"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -41,7 +41,7 @@
       </div>
     </div>
     <div class="header-meta">
-      <div id="updated" class="updated">Waiting for a desk</div>
+      <div class="updated-row"><span id="liveDot" class="live-dot" hidden>LIVE</span><div id="updated" class="updated">Waiting for a desk</div></div>
       <a id="fomoAccount" class="fomo-account" href="https://fomo.family/profile/tornell?source=share_link&amp;r=savipww">
         <span class="fomo-avatar" aria-hidden="true">F</span>
         <span class="fomo-label">FOMO · @tornell</span>
@@ -199,6 +199,7 @@
         <div id="coinChart" class="chart dx-host"></div>
         <div id="coinDex" class="dex-embed" hidden></div>
         <p id="coinChartNote" class="caption"></p>
+        <div id="coinTrades" class="dx-trades" hidden></div>
       </section>
       <dl id="coinMeta" class="meta"></dl>
       <a id="coinFomo" class="btn" hidden>Open coin on FOMO</a>
@@ -243,10 +244,11 @@
 </div>
 <script src="static/lwc-4.2.3.js"></script>
 <script src="static/marks.js?v=1"></script>
-<script src="static/dexchart.js?v=1"></script>
+<script src="static/dexchart.js?v=2"></script>
 <script src="static/styles.js?v=1"></script>
 <script src="static/spark.js?v=1"></script>
 <script src="static/dash.js?v=2"></script>
-<script src="static/app.js?v=30"></script>
+<script src="static/live.js?v=1"></script>
+<script src="static/app.js?v=31"></script>
 </body>
 </html>
