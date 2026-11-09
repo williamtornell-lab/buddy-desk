@@ -53,6 +53,59 @@
       '<button type="button" data-stp="' + esc(id) + '" data-d="1"' + (v >= hi - 1e-9 ? " disabled" : "") + ' aria-label="Higher">+</button></div></div>';
   }
 
+  // ---- REAL auto (Scalping only) ----
+  var RLAB = { per_trade_usd: "Per trade", max_open: "Max open", daily_loss_usd: "Daily loss cap", exposure_usd: "Max exposure" };
+  var RSTEP = { per_trade_usd: 1, max_open: 1, daily_loss_usd: 1, exposure_usd: 5 };
+  var RMIN = { per_trade_usd: 1, max_open: 1, daily_loss_usd: 1, exposure_usd: 5 };
+  var redits = {};
+  var payoutDraft = null;
+  function rfmt(k, v) { return k === "max_open" ? String(Math.round(v)) : "$" + (Math.round(v * 100) / 100); }
+  function short(a) { a = String(a || ""); return a.length > 12 ? a.slice(0, 4) + "…" + a.slice(-4) : a; }
+  function signed(v) { var n = num(v); return n == null ? "—" : (n > 0 ? "+" : n < 0 ? "−" : "") + "$" + Math.abs(n).toFixed(2); }
+  function realCard(s) {
+    var r = s.real;
+    if (!r || !r.address) return "";
+    var lim = r.limits || {}, cap = r.hard_caps || {};
+    var b = r.balance || {};
+    var bal = b.ts ? (num(b.usdc) || 0).toFixed(2) + " USDC · " + (num(b.sol) || 0).toFixed(4) + " SOL" : "Checking…";
+    var today = r.today || {};
+    var body = sw("real", !!r.armed, "Real auto", r.cap_tripped ? "Daily loss cap hit · off until tomorrow" : "Scalping only · real money · arm in Telegram");
+    body += '<div class="set-row"><div class="set-txt"><span class="set-name">Hot wallet</span><span class="set-sub rl-addr">' + esc(r.address) + "</span></div>" +
+      '<button type="button" class="chip" data-copy-addr="' + esc(r.address) + '">Copy</button></div>';
+    body += '<div class="set-row"><div class="set-txt"><span class="set-name">' + esc(bal) + '</span><span class="set-sub">Today ' + esc(signed(today.total)) + " · " +
+      (num(r.open) || 0) + " open · $" + (num(r.exposure_usd) || 0).toFixed(2) + " / $" + rfmt("exposure_usd", num(lim.exposure_usd) || 0).slice(1) + " in trades</span></div></div>";
+    body += '<p class="set-group">Limits <span class="muted">max $' + (cap.per_trade_usd || 10) + " · $" + (cap.daily_loss_usd || 50) + " · $" + (cap.exposure_usd || 100) + "</span></p>";
+    ["per_trade_usd", "max_open", "daily_loss_usd", "exposure_usd"].forEach(function (k) {
+      var cur = num(lim[k]), v = redits[k] != null ? redits[k] : cur, hi = num(cap[k]) || cur;
+      var changed = redits[k] != null && Math.abs(redits[k] - cur) > 1e-9;
+      body += '<div class="set-row"><div class="set-txt"><span class="set-name">' + esc(RLAB[k]) + "</span></div>" +
+        '<div class="stp"><button type="button" data-rstp="' + k + '" data-d="-1"' + (v <= RMIN[k] + 1e-9 ? " disabled" : "") + ' aria-label="Lower">−</button>' +
+        '<span class="stp-v' + (changed ? " changed" : "") + '">' + esc(rfmt(k, v)) + "</span>" +
+        '<button type="button" data-rstp="' + k + '" data-d="1"' + (v >= hi - 1e-9 ? " disabled" : "") + ' aria-label="Higher">+</button></div></div>';
+    });
+    var rdirty = Object.keys(redits).some(function (k) { return Math.abs(redits[k] - num(lim[k])) > 1e-9; });
+    body += '<button type="button" class="set-btn" data-real-save' + (rdirty ? "" : " disabled") + ">Save limits</button>";
+    body += '<button type="button" class="set-btn danger" data-real-sellall' + ((num(r.open) || 0) ? "" : " disabled") + ">Sell all real now</button>";
+    body += '<p class="set-group">Send back to FOMO</p>';
+    body += '<div class="set-row"><div class="set-txt"><span class="set-name">' + (r.payout_address ? "To " + esc(short(r.payout_address)) : "No address saved") +
+      '</span><span class="set-sub">Your FOMO USDC (Solana) deposit address. Changes need a Telegram tap.</span></div></div>' +
+      '<div class="chips"><input id="payoutIn" class="chip-in rl-in" type="text" autocomplete="off" spellcheck="false" placeholder="' + (r.payout_address ? "New address" : "Paste address") + '"' +
+      (payoutDraft ? ' value="' + esc(payoutDraft) + '"' : "") + '><button type="button" class="chip" data-payout-save' + (payoutDraft ? "" : " disabled") + ">Save</button></div>";
+    body += '<button type="button" class="set-btn ghost" data-real-withdraw' + (r.payout_address ? "" : " disabled") + ">Send all back to FOMO</button>";
+    var tr = Array.isArray(r.trades) ? r.trades.slice(0, 8) : [];
+    if (tr.length) {
+      body += '<p class="set-group">Real trades</p>' + tr.map(function (t) {
+        var tx = t.sell_tx || t.buy_tx;
+        var what = t.kind === "withdraw" ? "To FOMO · " + (num(t.usdc_amount) || 0).toFixed(2) + " USDC + " + (num(t.sol_amount) || 0).toFixed(4) + " SOL"
+          : esc(t.name || short(t.mint)) + " · $" + (num(t.usd_in) || 0).toFixed(2) + (t.status === "closed" && t.pnl_usd != null ? " · " + signed(t.pnl_usd) : "");
+        return '<div class="set-row rl-tr"><div class="set-txt"><span class="set-name">' + what + '</span><span class="set-sub">' + esc(t.status) +
+          (t.exit_reason ? " · " + esc(t.exit_reason) : "") + (t.fee_usd != null ? " · fee $" + (num(t.fee_usd) || 0).toFixed(3) : "") + "</span></div>" +
+          (tx ? '<a class="chip" href="' + esc(tx) + '" target="_blank" rel="noopener">Solscan</a>' : "") + "</div>";
+      }).join("");
+    }
+    return card("Real auto", body, '<span class="muted">' + (r.armed ? "ON" : "OFF") + "</span>");
+  }
+
   function card(title, body, aside) {
     return '<section class="dash-card set-card"><div class="dash-head"><h2>' + esc(title) + "</h2>" + (aside || "") + "</div>" + body + "</section>";
   }
@@ -72,6 +125,8 @@
     var paused = !!ds.paused;
     // Single Desk on/off control: the big power button, filled in by session.js (BuddySession).
     html += card("Desk", '<div id="deskPower" class="desk-power ' + (paused ? "off" : "on") + '" aria-label="Desk power"></div>');
+
+    try { html += realCard(s); } catch (e) { /* real card optional */ }
 
     // Paper balance
     var chips = [100, 200, 500, 1000].map(function (a) {
@@ -150,6 +205,15 @@
     if ((t = e.target.closest("[data-set-sw]"))) {
       var key = t.getAttribute("data-set-sw"), on = t.getAttribute("data-on") !== "1";
       if (key.indexOf("sub:") === 0) { if (hooks.scalp) hooks.scalp({ sub: key.slice(4), on: on }); return true; }
+      if (key === "real") {
+        var rl = (s && s.real && s.real.limits) || {};
+        ask({ title: on ? "Turn Real auto on?" : "Turn Real auto off?",
+          body: on ? "Scalping buys with REAL money from the hot wallet: $" + rl.per_trade_usd + " per trade, max " + rl.max_open + " open, $" + rl.exposure_usd + " total, stops itself at −$" + rl.daily_loss_usd + " for the day. You confirm it in Telegram. No profits are promised; coins can go to zero."
+            : "Stops new real buys. Open real trades keep their exits and still sell.",
+          ok: on ? "Request" : "Turn off", danger: on, cmds: ["real:" + (on ? "on" : "off")], toast: on ? "Confirm in Telegram" : "Sent",
+          after: function () { pend[key] = { on: on, at: Date.now() }; } });
+        return true;
+      }
       var cmd = key === "desk" ? "desk:" + (on ? "on" : "off")
         : key === "learn" ? "learn:" + (on ? "on" : "off")
         : key.replace(":", ":") + ":" + (on ? "on" : "off");
@@ -164,6 +228,47 @@
       ask({ title: titles[key] || ((on ? "Turn on " : "Turn off ") + key.split(":")[1] + " alerts?"),
         body: bodies[key] || "Telegram " + key.split(":")[1] + " alerts " + (on ? "on." : "off."), ok: on ? "Turn on" : "Turn off",
         cmds: [cmd], toast: "Sent", after: function () { pend[key] = { on: on, at: Date.now() }; } });
+      return true;
+    }
+    if ((t = e.target.closest("[data-copy-addr]"))) {
+      var a = t.getAttribute("data-copy-addr");
+      try { navigator.clipboard.writeText(a); t.textContent = "Copied"; } catch (err) { window.prompt("Copy address", a); }
+      return true;
+    }
+    if ((t = e.target.closest("[data-rstp]"))) {
+      var rk = t.getAttribute("data-rstp"), rd = Number(t.getAttribute("data-d"));
+      var rl2 = (s && s.real) || {}, rcur = redits[rk] != null ? redits[rk] : num((rl2.limits || {})[rk]);
+      var rhi = num((rl2.hard_caps || {})[rk]) || rcur;
+      redits[rk] = Math.min(rhi, Math.max(RMIN[rk], Math.round((rcur + rd * RSTEP[rk]) * 100) / 100));
+      render(s);
+      return true;
+    }
+    if (e.target.closest("[data-real-save]")) {
+      var rl3 = ((s && s.real) || {}).limits || {};
+      var rks = Object.keys(redits).filter(function (k) { return Math.abs(redits[k] - num(rl3[k])) > 1e-9; });
+      if (!rks.length) return true;
+      ask({ title: "Save real limits?", body: rks.map(function (k) { return RLAB[k] + " → " + rfmt(k, redits[k]); }).join(" · ") + ". Lower limits apply now; higher ones need a Telegram tap. Hard caps: $10 per trade, $50 daily loss, $100 exposure.",
+        ok: "Save", cmds: rks.map(function (k) { return "real:set:" + k + "=" + redits[k]; }), toast: "Limits sent",
+        after: function () { window.setTimeout(function () { redits = {}; }, 4000); } });
+      return true;
+    }
+    if (e.target.closest("[data-real-sellall]")) {
+      ask({ title: "Sell all real now?", body: "Turns Real auto off and sells every open real position at market (max 5% slippage) back to USDC/SOL in the hot wallet.",
+        ok: "Sell all", danger: true, cmds: ["real:sellall"], toast: "Sell all sent" });
+      return true;
+    }
+    if (e.target.closest("[data-payout-save]")) {
+      var pa = String(payoutDraft || "").trim();
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(pa)) { if (hooks.liveText) { /* noop */ } window.alert("That is not a Solana address."); return true; }
+      ask({ title: "Save FOMO payout address?", body: pa + " · Every Send back goes ONLY to this address. You confirm it in Telegram.", ok: "Save", cmds: ["real:payout=" + pa], toast: "Confirm in Telegram",
+        after: function () { payoutDraft = null; } });
+      return true;
+    }
+    if (e.target.closest("[data-real-withdraw]")) {
+      var pr = ((s && s.real) || {}).payout_address;
+      if (!pr) return true;
+      ask({ title: "Send everything back to FOMO?", body: "Turns Real auto off, sells all open real trades, then sends all USDC and the SOL (keeping ~0.005 for fees) to " + short(pr) + ". If a sell fails nothing is sent.",
+        ok: "Send back", danger: true, cmds: ["real:withdraw"], toast: "Send back started" });
       return true;
     }
     if ((t = e.target.closest("[data-reset-amt]"))) { resetAmt = Number(t.getAttribute("data-reset-amt")); render(s); return true; }
@@ -214,6 +319,12 @@
   }
 
   function onInput(e, s) {
+    if (e.target && e.target.id === "payoutIn") {
+      payoutDraft = String(e.target.value || "").trim() || null;
+      var pb = document.querySelector("[data-payout-save]");
+      if (pb) pb.disabled = !payoutDraft;
+      return true;
+    }
     if (e.target && e.target.id === "resetCustom") {
       var v = Number(e.target.value);
       resetAmt = Number.isFinite(v) && v >= 10 && v <= 100000 ? Math.round(v * 100) / 100 : null;
