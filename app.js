@@ -1302,8 +1302,14 @@
     e.hidden = !msg;
   }
 
+  let lastTab = "home";
   function showTab(id) {
-    const bar = id === "coin" ? "home" : id;
+    if (id !== "coin") lastTab = id;
+    const bar = id === "coin" ? lastTab : id;
+    if (id === "coin") {
+      const bk = document.getElementById("backHome");
+      if (bk) bk.textContent = "\u2190 " + (lastTab === "home" ? "Home" : lastTab.charAt(0).toUpperCase() + lastTab.slice(1));
+    }
     document.querySelectorAll(".tabbar button").forEach((b) => {
       const on = b.dataset.tab === bar;
       b.classList.toggle("on", on);
@@ -2155,9 +2161,9 @@
     const mint = e.target.closest("[data-mint]");
     if (mint && mint.dataset.mint) openMint(mint.dataset.mint);
   });
-  $("#backHome").addEventListener("click", () => showTab("home"));
+  $("#backHome").addEventListener("click", () => showTab(lastTab));
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && $("#coin").classList.contains("on")) showTab("home");
+    if (e.key === "Escape" && $("#coin").classList.contains("on")) showTab(lastTab);
   });
   window.addEventListener("hashchange", () => {
     state.data = null;
