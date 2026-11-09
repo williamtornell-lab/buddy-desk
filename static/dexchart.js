@@ -458,7 +458,9 @@
       applyMarkers();
       if (fit) {
         var n = bars.length;
-        me.chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - 90), to: n + 3 });
+        var w = (me.box && me.box.clientWidth) || 360;
+        var show = Math.max(24, Math.min(160, Math.floor((w - 70) / 7)));
+        me.chart.timeScale().setVisibleLogicalRange({ from: n - show, to: n + 3 });
       }
       me.legend.innerHTML = legendFor(bars[bars.length - 1]);
       status("Market candles · GeckoTerminal · " + me.tf + " · refresh 30s");
