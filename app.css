@@ -1318,8 +1318,25 @@ body.demo-mode .real-bal { display: none !important; }
 }
 .restart-btn.dk-pill { color: var(--red); }
 
-/* v47 · Desk pass/kill: text color only (no box, glow, or slide) */
-.dk-list { position: relative; }
+/* v47 · Desk pass/kill: text color ONLY — no slide, ghost, transform, or layout jump */
+.dk-list { position: relative; overflow: hidden; }
+.dk-row {
+  min-height: 44px;
+  height: 44px;
+  align-items: center;
+  overflow: hidden;
+}
+.dk-act {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+  animation: none !important;
+}
 .dk-act .dk-nm {
   display: inline;
   font-weight: 760;
@@ -1328,9 +1345,17 @@ body.demo-mode .real-bal { display: none !important; }
   background-color: transparent !important;
   box-shadow: none !important;
   outline: none !important;
+  border: 0 !important;
   border-radius: 0;
+  padding: 0;
+  margin: 0;
   -webkit-tap-highlight-color: transparent;
   transition: color 280ms ease-out;
+  transform: none !important;
+  animation: none !important;
+  position: static !important;
+  left: auto !important;
+  top: auto !important;
 }
 .dk-act .dk-nm.is-pass,
 .dk-act .dk-nm.pass { color: #30d158; background: transparent !important; }
@@ -1343,7 +1368,21 @@ body.demo-mode .real-bal { display: none !important; }
   background: transparent !important;
   box-shadow: none !important;
 }
-.dk-slide { display: none !important; } /* legacy overlay removed */
+/* Kill legacy v46 ghost/slide overlay completely */
+.dk-slide,
+.dk-ghost,
+[class*="dk-slide"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: none !important;
+  animation: none !important;
+  transition: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
 @media (prefers-reduced-motion: reduce) {
   .dk-act .dk-nm, .lg-sym { transition: none !important; }
   .lg-row.lg-in { animation: none !important; }
