@@ -1,0 +1,118 @@
+/* Buddy desk power button + Desk sessions.
+   Big Desk ON/OFF button on Home sends the existing desk:on / desk:off command
+   (off = no new PAPER buys, open trades still managed). Turning off archives the
+   Desk card's session counters on the desk; Insights lists past sessions.
+   Display only: balance, trades, equity chart and learning are not touched. */
+(function (root) {
+  "use strict";
+  var hooks = { confirm: null };
+  var pend = null; // {on, at}
+
+  function $(s) { return document.querySelector(s); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function num(v) { var n = Number(v); return v == null || v === "" || !Number.isFinite(n) ? null : n; }
+  function hm(ts) {
+    var t = num(ts); if (t == null) return "";
+    return new Date(t * 1000).toLocaleString("sv-SE", { timeZone: "Europe/Stockholm", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+  function usd(v) {
+    var n = num(v); if (n == null) return "—";
+    return (n > 0 ? "+" : n < 0 ? "−" : "") + "$" + Math.abs(n).toFixed(2);
+  }
+  function isReal(s) {
+    return String(s.mode_label || s.mode || "").toUpperCase() === "REAL" || String(s.mode || "").toUpperCase() === "LIVE";
+  }
+  function deskOn(s) {
+    var ds = s.desk_settings || {};
+    var on = !ds.paused;
+    if (pend) {
+      if (pend.on === on || Date.now() - pend.at > 90000) pend = null;
+      else return { on: pend.on, busy: true };
+    }
+    return { on: on, busy: false };
+  }
+
+  function renderPower(s) {
+    var host = $("#deskPower");
+    if (!host) return;
+    if (!s.desk_settings || isReal(s)) { host.hidden = true; return; }
+    host.hidden = false;
+    var st = deskOn(s);
+    var sess = (s.dashboard && s.dashboard.session) || null;
+    var line = st.on ? "PAPER buys on · tap to turn off" : "Paused · open trades still managed · tap to turn on";
+    if (st.busy) line = "Sending…";
+    host.className = "desk-power " + (st.on ? "on" : "off") + (st.busy ? " busy" : "");
+    host.innerHTML =
+      '<button type="button" class="dp-btn" data-desk-power="' + (st.on ? "off" : "on") + '"' + (st.busy ? " disabled" : "") +
+      ' role="switch" aria-checked="' + st.on + '" aria-label="Desk ' + (st.on ? "on" : "off") + '">' +
+      '<span class="dp-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg></span>' +
+      '<span class="dp-txt"><b>Desk ' + (st.on ? "ON" : "OFF") + "</b><small>" + esc(line) + "</small></span>" +
+      '<span class="dp-knob" aria-hidden="true"><i></i></span></button>' +
+      (sess && sess.start ? '<p class="dp-sess">Session since ' + esc(hm(sess.start)) + " · " + (num(sess.buys) || 0) + " buys · " +
+        (num(sess.sells) || 0) + " sells · " + esc(usd(sess.pnl_usd)) + "</p>" : "");
+  }
+
+  function renderDeskSession(s) {
+    var d = s.dashboard || {};
+    var sess = d.session;
+    var el = $("#deskSession");
+    if (!el) return;
+    if (!sess || !sess.start) { el.hidden = true; return; }
+    el.hidden = false;
+    el.textContent = "Session since " + hm(sess.start) + " · " + (num(sess.buys) || 0) + " buys · " + (num(sess.sells) || 0) + " sells · " +
+      (num(sess.wins) || 0) + "W/" + (num(sess.losses) || 0) + "L · " + usd(sess.pnl_usd);
+  }
+
+  function renderPast(s) {
+    var card = $("#sessionsCard"), host = $("#pastSessions");
+    if (!card || !host) return;
+    var d = s.dashboard || {};
+    var rows = Array.isArray(d.past_sessions) ? d.past_sessions : null;
+    if (!rows) { card.hidden = true; return; }
+    card.hidden = false;
+    $("#sessionsMeta").textContent = rows.length ? rows.length + " saved" : "";
+    if (!rows.length) {
+      host.innerHTML = '<p class="quiet">No past sessions yet. Turning the desk off saves the current session here and restarts the Desk counters.</p>';
+      return;
+    }
+    host.innerHTML = rows.map(function (r) {
+      var p = num(r.pnl_usd);
+      var tone = p == null ? "flat" : p > 0 ? "up" : p < 0 ? "down" : "flat";
+      var when = (r.started_local || hm(r.started_at)) + " → " + (r.ended_local || hm(r.ended_at));
+      return '<div class="ps-row"><div class="ps-when">' + esc(when) + "</div>" +
+        '<div class="ps-stats">' + (num(r.scanned) || 0) + " scanned · " + (num(r.buys) || 0) + " buys · " + (num(r.sells) || 0) + " sells · " +
+        (num(r.wins) || 0) + "W/" + (num(r.losses) || 0) + "L · " + (num(r.killed) || 0) + " killed</div>" +
+        '<div class="ps-pnl ' + tone + '">' + esc(usd(p)) + "</div></div>";
+    }).join("");
+  }
+
+  function render(s) {
+    if (!s) return;
+    try { renderPower(s); } catch (e) { /* optional */ }
+    try { renderDeskSession(s); } catch (e) { /* optional */ }
+    try { renderPast(s); } catch (e) { /* optional */ }
+  }
+
+  function onClick(e, s) {
+    var t = e.target.closest && e.target.closest("[data-desk-power]");
+    if (!t) return false;
+    var on = t.getAttribute("data-desk-power") === "on";
+    if (!hooks.confirm) return true;
+    hooks.confirm({
+      title: on ? "Turn the desk on?" : "Turn the desk off?",
+      body: on ? "New PAPER buys start again in the active mode, copy and sub-bots."
+        : "Stops NEW PAPER buys. Open trades keep being managed and exited. The current Desk session is saved to Insights → Past sessions and the Desk counters start from zero. Balance, trades, chart and learning stay.",
+      ok: on ? "Turn on" : "Turn off",
+      cmds: ["desk:" + (on ? "on" : "off")],
+      toast: "Sent",
+      after: function () { pend = { on: on, at: Date.now() }; if (s) render(s); }
+    });
+    return true;
+  }
+
+  root.BuddySession = { hooks: hooks, render: render, onClick: onClick };
+})(window);

@@ -1714,6 +1714,9 @@
     if (window.BuddyDash) {
       try { BuddyDash.render(s, paperPerf, live); } catch (e) { /* dashboard is optional */ }
     }
+    if (window.BuddySession) {
+      try { BuddySession.render(s); } catch (e) { /* desk power / sessions are optional */ }
+    }
     if (window.BuddySpark) {
       try { BuddySpark.render(s, paperPerf, live, liveEquityExtra(s, live)); } catch (e) { /* sparkline is optional */ }
     }
@@ -2124,8 +2127,9 @@
   if (window.BuddyCopy) {
     BuddyCopy.hooks.request = (on) => openDeskConfirm({ type: "copy", on: !!on });
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
+    if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v39";
+      BuddySettings.hooks.version = "app v40";
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
@@ -2161,6 +2165,7 @@
     if (e.target.closest("a")) return;
     if (window.BuddyStyles && BuddyStyles.onClick(e, state.data)) return;
     if (window.BuddyCopy && BuddyCopy.onClick(e, state.data)) return;
+    if (window.BuddySession && BuddySession.onClick(e, state.data)) return;
     if (window.BuddySettings && BuddySettings.onClick(e, state.data)) return;
     if (window.BuddyAdaptive && BuddyAdaptive.onClick(e, state.data)) return;
     const sell = e.target.closest("[data-sell]");

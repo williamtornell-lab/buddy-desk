@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=37"/>
+<link rel="stylesheet" href="static/app.css?v=38"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -76,6 +76,8 @@
         </div>
       </div>
 
+      <section id="deskPower" class="desk-power" aria-label="Desk power" hidden></section>
+
       <section id="styleCard" class="dash-card style-card" aria-labelledby="styleTitle" hidden>
         <div class="dash-head"><h2 id="styleTitle">Trading mode</h2><span id="styleActive" class="style-active"></span></div>
         <div id="styleSeg" class="style-seg" role="group" aria-label="Trading mode"></div>
@@ -96,6 +98,7 @@
 
       <section id="deskCard" class="dash-card" aria-labelledby="deskTitle" hidden>
         <div class="dash-head"><h2 id="deskTitle">Desk</h2><span id="deskCounts" class="muted"></span></div>
+        <p id="deskSession" class="dk-session" hidden></p>
         <div id="deskAgents" class="dk-list"></div>
       </section>
 
@@ -136,6 +139,11 @@
         <div id="adaptiveTest" class="ad-test"></div>
         <div id="adaptiveConv" class="ad-convs" role="group" aria-label="Adaptive conviction"></div>
         <div id="adaptiveCands" class="ad-cands"></div>
+      </section>
+
+      <section id="sessionsCard" class="dash-card sessions-card" aria-labelledby="sessionsTitle" hidden>
+        <div class="dash-head"><h2 id="sessionsTitle">Past sessions</h2><span id="sessionsMeta" class="muted"></span></div>
+        <div id="pastSessions" class="ps-list"></div>
       </section>
 
       <section id="reasonsCard" class="dash-card" aria-labelledby="reasonsTitle" hidden>
@@ -300,6 +308,7 @@
 <script src="static/copy.js?v=2"></script>
 <script src="static/adaptive.js?v=1"></script>
 <script src="static/settings.js?v=2"></script>
-  <script src="static/app.js?v=39"></script>
+<script src="static/session.js?v=1"></script>
+  <script src="static/app.js?v=40"></script>
 </body>
 </html>
