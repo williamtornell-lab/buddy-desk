@@ -59,14 +59,22 @@
     var x = perf.bal / perf.start;
     pill.hidden = false;
     pill.className = "mult-pill " + (x > 1.0001 ? "up" : x < 0.9999 ? "down" : "flat");
-    $("#multX").textContent = x.toFixed(2) + "x";
     var w = num(d.wins) || 0, l = num(d.losses) || 0;
-    $("#multWL").textContent = w + "W / " + l + "L";
+    var tw = root.BuddySpark ? root.BuddySpark.tween : function (el, v, f) { if (el) el.textContent = f(v); };
+    tw($("#multX"), x, function (v) { return Number(v).toFixed(2) + "x"; });
+    tw($("#multW"), w, function (v) { return String(Math.round(v)); });
+    tw($("#multL"), l, function (v) { return String(Math.round(v)); });
     if (sub) {
       var set = s.settings || {};
       var bits = ["Equity", money(perf.start) + (d.since_reset ? " at reset" : " start")];
+      var styleSize = "";
+      if (root.BuddyStyles) {
+        var ml = root.BuddyStyles.modesOf(s);
+        styleSize = root.BuddyStyles.sizeText(root.BuddyStyles.activeOf(s, ml));
+      }
       var tk = num(set.min_ticket_usd);
-      if (tk != null) bits.push(money(tk).replace(".00", "") + " size");
+      if (styleSize) bits.push(styleSize);
+      else if (tk != null) bits.push(money(tk).replace(".00", "") + " size");
       sub.textContent = bits.join(" · ");
     }
   }
@@ -215,6 +223,7 @@
           tickerQuotes[m] = { price: num(p.priceUsd), change: num(pc.h24) != null ? num(pc.h24) : num(pc.h1), symbol: p.baseToken.symbol, at: Date.now() };
         });
         paintTicker();
+        if (root.__buddyRender) root.__buddyRender();
       })
       .catch(function () { /* keep last quotes */ })
       .then(function () { tickerBusy = false; });
@@ -240,5 +249,6 @@
   }
 
   setInterval(pollTicker, 30000);
-  root.BuddyDash = { render: render, AGENTS: AGENTS, _tickerCoins: tickerCoins };
+  function quote(mint) { return tickerQuotes[mint] || null; }
+  root.BuddyDash = { render: render, quote: quote, AGENTS: AGENTS, _tickerCoins: tickerCoins };
 })(typeof window !== "undefined" ? window : globalThis);

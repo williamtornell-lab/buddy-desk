@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=26"/>
+<link rel="stylesheet" href="static/app.css?v=27"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -47,14 +47,14 @@
         <span class="fomo-label">FOMO · @tornell</span>
       </a>
     </div>
-    <div id="ticker" class="ticker" hidden aria-label="Coin prices"><div class="tk-track"></div></div>
+    <div id="ticker" class="tkbar" hidden aria-label="Coin prices"><div class="tk-track"></div></div>
     <div id="modeBanner" class="mode-banner" hidden>REAL · alerts only — tap Bought/Sold in Telegram</div>
   </header>
 
   <main>
     <section id="home" class="tab on" aria-labelledby="homeTab">
       <div class="hero">
-        <div id="multPill" class="mult-pill flat" hidden><b id="multX">1.00x</b><span id="multWL">0W / 0L</span></div>
+        <div id="multPill" class="mult-pill flat" hidden><b id="multX">1.00x</b><span id="multWL"><i id="multW">0</i>W / <i id="multL">0</i>L</span></div>
         <p class="kicker" id="stackLabel">Paper balance</p>
         <p id="bal" class="bal">—</p>
         <p id="realBalRow" class="real-bal" hidden>FOMO · <span id="realBal">—</span></p>
@@ -64,28 +64,22 @@
           <span id="pnlPct">—</span>
         </div>
         <p id="pnlSub" class="sub">Night P&amp;L vs paper start</p>
-      </div>
-
-      <section class="chart-card" aria-labelledby="equityHeading">
-        <div class="sec-head">
-          <h2 id="equityHeading">Equity</h2>
-          <span id="chartSpan" class="muted"></span>
-        </div>
-        <div id="chartRanges" class="chart-ranges" role="group" aria-label="Equity range">
-          <button type="button" data-range="day" class="on">Day</button>
-          <button type="button" data-range="week">Week</button>
-          <button type="button" data-range="month">Month</button>
-          <button type="button" data-range="year">Year</button>
-        </div>
-        <div id="chartWrap" class="chart-wrap">
-          <div id="chart" class="chart"></div>
-          <div id="chartOverlay" class="chart-overlay" hidden>
-            <div id="chartVline" class="chart-vline"></div>
-            <div id="chartDot" class="chart-dot"></div>
-            <div id="chartTip" class="chart-tip"></div>
+        <div id="sparkWrap" class="spark-wrap" hidden>
+          <div id="spark" class="spark" role="img" aria-label="Paper equity since reset"></div>
+          <div id="sparkRanges" class="spark-ranges" role="group" aria-label="Equity range">
+            <button type="button" data-spark="reset" class="on">Reset</button>
+            <button type="button" data-spark="day">1D</button>
+            <button type="button" data-spark="week">1W</button>
+            <button type="button" data-spark="month">1M</button>
+            <button type="button" data-spark="year">1Y</button>
           </div>
         </div>
-        <p id="chartCaption" class="caption"></p>
+      </div>
+
+      <section id="styleCard" class="dash-card style-card" aria-labelledby="styleTitle" hidden>
+        <div class="dash-head"><h2 id="styleTitle">Trading mode</h2><span id="styleActive" class="style-active"></span></div>
+        <div id="styleSeg" class="style-seg" role="group" aria-label="Trading mode"></div>
+        <div id="styleBody" class="style-body"></div>
       </section>
 
       <section id="deskCard" class="dash-card" aria-labelledby="deskTitle" hidden>
@@ -249,7 +243,9 @@
 <script src="static/lwc-4.2.3.js"></script>
 <script src="static/marks.js?v=1"></script>
 <script src="static/dexchart.js?v=1"></script>
-<script src="static/dash.js?v=1"></script>
-<script src="static/app.js?v=28"></script>
+<script src="static/styles.js?v=1"></script>
+<script src="static/spark.js?v=1"></script>
+<script src="static/dash.js?v=2"></script>
+<script src="static/app.js?v=29"></script>
 </body>
 </html>

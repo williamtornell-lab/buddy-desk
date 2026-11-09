@@ -309,7 +309,10 @@
       quote_as_of: toUnix(p.quote_as_of),
       quote_clock: p.quote_clock || "",
       mark_samples: Array.isArray(p.mark_samples) ? p.mark_samples : [],
-      demo: !!(p.demo || (s && s.demo))
+      demo: !!(p.demo || (s && s.demo)),
+      trading_mode: p.trading_mode || p.paper_mode || p.trade_mode || p.style || p.mode_name || p.strategy_mode || "",
+      entry_context: p.entry_context || null,
+      strategy: p.strategy || ""
     };
   }
 
@@ -911,7 +914,7 @@
       '<button type="button" class="trade" data-trade="' + index + '">' +
       coinLogoHtml(t.mint, t.symbol, t.name, null, pickImageUrl(t)) +
       '<span class="who">' +
-      '<span class="ticker">' + esc(displayTicker(t)) + pill + "</span>" +
+      '<span class="ticker">' + esc(displayTicker(t)) + pill + (window.BuddyStyles ? BuddyStyles.tagHtml(t, state.data) : "") + "</span>" +
       '<dl class="open-px"><dt>Entry</dt><dd>' + esc(entry) + "</dd><dt>Now</dt><dd>" + esc(nowPx) +
       "</dd><dt>Value</dt><dd>" + esc(value) + "</dd></dl>" +
       '<span class="open-fresh' + (fresh.stale ? " stale" : "") + '">' + esc(fresh.text) + "</span>" +
@@ -944,6 +947,7 @@
       (String(t.mode || t.source || "").toUpperCase().indexOf("FOMO") >= 0 || t.source === "fomo" || t.source === "wallet"
         ? '<span class="src-pill fomo">FOMO</span>'
         : '<span class="src-pill paper">PAPER</span>') +
+      (window.BuddyStyles ? BuddyStyles.tagHtml(t, state.data) : "") +
       "</span>" +
       '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" +
       "</span>" + pnlMarkup(t) +
@@ -957,21 +961,29 @@
     const ticker = displayTicker(w);
     const coin = coinOf(state.data, w.mint);
     const age = w.age_min != null ? Number(w.age_min) : null;
-    const left = w.left_min != null ? Number(w.left_min) : null;
     const holders = num(w.holders != null ? w.holders : coin.holders);
+    const name = displayName(w.name ? w : coin);
     const bits = [];
-    if (age != null && Number.isFinite(age)) bits.push(age < 1 ? "<1m" : Math.round(age) + "m");
-    if (holders != null) bits.push(holders < 1000 ? holders + "h" : (holders / 1000).toFixed(holders >= 10000 ? 0 : 1) + "kh");
-    else if (left != null && Number.isFinite(left)) bits.push(left < 1 ? "<1m left" : Math.round(left) + "m left");
-    if (!bits.length) bits.push("watching");
+    if (name && name.toUpperCase() !== String(ticker).toUpperCase()) bits.push(name);
+    if (holders != null) bits.push(holders < 1000 ? holders + " holders" : (holders / 1000).toFixed(holders >= 10000 ? 0 : 1) + "k holders");
+    const ageTxt = age != null && Number.isFinite(age) ? (age < 1 ? "<1m" : Math.round(age) + "m") : "";
+    const status = String(w.status || "watching").toLowerCase();
+    const pill = ageTxt ? ageTxt : status;
+    const q = window.BuddyDash && BuddyDash.quote ? BuddyDash.quote(w.mint) : null;
+    const px = q && q.price != null && window.BuddyChart ? "$" + BuddyChart.fmtPrice(q.price) : "";
+    const ch = q && q.change != null ? q.change : null;
+    const chTxt = ch == null ? "" : (ch > 0 ? "+" : ch < 0 ? "−" : "") + Math.abs(ch).toFixed(Math.abs(ch) >= 100 ? 0 : 1) + "%";
     const mint = w.mint ? esc(w.mint) : "";
     const img = pickImageUrl(w) || pickImageUrl(coin);
     return (
-      '<div class="wait-cell">' +
-      '<button type="button" class="wait-card" data-mint="' + mint + '">' +
+      '<div class="wait-row">' +
+      '<button type="button" class="wait-main" data-mint="' + mint + '">' +
       coinLogoHtml(w.mint, w.symbol || coin.symbol, w.name || coin.name, null, img) +
-      '<span class="ticker">' + esc(ticker) + "</span>" +
-      '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" +
+      '<span class="who"><span class="ticker">$' + esc(String(ticker).replace(/^\$/, "")) + "</span>" +
+      (bits.length ? '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" : "") + "</span>" +
+      '<span class="wait-px">' + (px ? "<b>" + esc(px) + "</b>" : '<b class="flat">—</b>') +
+      (chTxt ? '<span class="' + (ch >= 0 ? "up" : "down") + '">' + esc(chTxt) + "</span>" : "") + "</span>" +
+      '<span class="wait-pill" title="' + esc(status) + '">' + esc(pill) + "</span>" +
       "</button>" + dexLink(w.mint, w) +
       "</div>"
     );
@@ -1102,6 +1114,14 @@
     const body = $("#modeConfirmBody");
     const ok = $("#modeConfirmOk");
     if (!box || !title || !body || !ok) return;
+    if (action.type === "style") {
+      title.textContent = "Switch to " + (action.label || action.name) + "?";
+      body.textContent = "Applies to new trades only. Open trades keep the rules they were opened with. PAPER fills only; REAL stays alerts-only.";
+      ok.textContent = "Switch";
+      ok.classList.remove("danger");
+      box.hidden = false;
+      return;
+    }
     if (action.type === "sell") {
       title.textContent = "Sell " + (action.name || "this coin") + "?";
       body.textContent = "Paper close at the latest price.";
@@ -1136,6 +1156,18 @@
 
   async function runDesk(action) {
     try {
+      if (action.type === "style") {
+        const name = String(action.name || "").toLowerCase();
+        if (!name || !window.BuddyStyles || BuddyStyles.RESERVED[name] || !/^[a-z0-9_]+$/.test(name)) return;
+        const sent = await postDesk("mode:" + name);
+        if (sent) {
+          BuddyStyles.markPending(name);
+          showToast((action.label || name) + " sent · new trades only", false);
+          if (state.data) render();
+          window.setTimeout(load, 1500);
+        }
+        return;
+      }
       const body = action.type === "sell" ? "close:" + action.mint : "reset:" + action.amount;
       const ok = await postDesk(body);
       if (ok) {
@@ -1462,6 +1494,21 @@
     }
   }
 
+  window.__buddyRender = () => { if (state.data) render(); };
+
+  function liveEquityExtra(s, live) {
+    if (live) return null;
+    let sum = 0;
+    let any = false;
+    (opensOf(s, tradesOf(s)) || []).forEach((t) => {
+      const src = String(t.mode || t.source || "").toUpperCase();
+      if (/FOMO|REAL|LIVE|WALLET/.test(src)) return;
+      const m = liveMark(t);
+      if (m && m.unrealized != null && Number.isFinite(m.unrealized)) { sum += m.unrealized; any = true; }
+    });
+    return any ? sum : null;
+  }
+
   function renderDesk(s) {
     const demo = isDemoPreview() || state.fixture || !!s.demo;
     document.body.classList.toggle("demo-mode", !!demo);
@@ -1528,7 +1575,8 @@
       const st = s.fomo_holdings_status || {};
       heroText = (st && String(st.status || "").indexOf("missing") === 0) ? "wallet/API needed" : "—";
     }
-    $("#bal").textContent = heroText;
+    if (window.BuddySpark && heroText === money(live ? fomoBal : paperPerf.bal)) BuddySpark.tween($("#bal"), live ? fomoBal : paperPerf.bal, money);
+    else $("#bal").textContent = heroText;
     const row = $("#pnlRow");
     if (live) {
       $("#pnlUsd").textContent = "—";
@@ -1536,14 +1584,25 @@
       row.className = "pnl-row flat";
       $("#pnlSub").textContent = "Real wallet · alerts only — you place trades on FOMO";
     } else {
-      $("#pnlUsd").textContent = signedMoney(paperPerf.usd);
-      $("#pnlPct").textContent = signedPct(paperPerf.pct);
+      if (window.BuddySpark) {
+        BuddySpark.tween($("#pnlUsd"), paperPerf.usd, signedMoney);
+        BuddySpark.tween($("#pnlPct"), paperPerf.pct, signedPct);
+      } else {
+        $("#pnlUsd").textContent = signedMoney(paperPerf.usd);
+        $("#pnlPct").textContent = signedPct(paperPerf.pct);
+      }
       row.className = "pnl-row " + tone;
       const startBit = paperPerf.known ? "vs " + money(paperPerf.start) + " paper start" : "paper start not in this file yet";
       $("#pnlSub").textContent = "Night P&L " + startBit;
     }
+    if (window.BuddyStyles) {
+      try { BuddyStyles.render(s); } catch (e) { /* modes are optional */ }
+    }
     if (window.BuddyDash) {
       try { BuddyDash.render(s, paperPerf, live); } catch (e) { /* dashboard is optional */ }
+    }
+    if (window.BuddySpark) {
+      try { BuddySpark.render(s, paperPerf, live, liveEquityExtra(s, live)); } catch (e) { /* sparkline is optional */ }
     }
     const updated = clock(s.ts);
     const prefix = (state.fixture || isDemoPreview()) ? "Demo · " : "";
@@ -1560,6 +1619,7 @@
       equity = equityOf(s, paperPerf);
       startBal = paperPerf.known ? paperPerf.start : null;
     }
+    if ($("#chart")) {
     const rangeKey = RANGE_SEC[state.chartRange] ? state.chartRange : "day";
     state.chartRange = rangeKey;
     const points = equity.synthetic ? equity.points : filterEquity(equity.points, rangeKey, nowTs);
@@ -1599,6 +1659,7 @@
       const win = RANGE_SEC[rangeKey];
       if (covered && covered < win * 0.85) cap += " · " + spanLabel(points) + " of data";
       $("#chartCaption").textContent = cap;
+    }
     }
 
     const openUsd = num(s.open_usd);
@@ -1931,8 +1992,13 @@
     if (!b) return;
     showTab(b.dataset.tab);
   });
+  if (window.BuddyStyles) {
+    BuddyStyles.hooks.requestSwitch = (a) => openDeskConfirm({ type: "style", name: a.name, label: a.label });
+    BuddyStyles.hooks.toast = (t) => showToast(t, false);
+  }
   document.querySelector("main").addEventListener("click", (e) => {
     if (e.target.closest("a")) return;
+    if (window.BuddyStyles && BuddyStyles.onClick(e, state.data)) return;
     const sell = e.target.closest("[data-sell]");
     if (sell) {
       openDeskConfirm({ type: "sell", mint: sell.dataset.sell, name: sell.dataset.sellName });
