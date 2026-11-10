@@ -231,6 +231,17 @@
     return false;
   }
 
+  function isRuggedTrade(t) {
+    if (!t) return false;
+    const r = String(t.exit_reason || "").toLowerCase();
+    return r === "rugged" || r === "rug";
+  }
+
+  function isBuyingTrade(t) {
+    const s = String((t && (t.side_or_status || t.status)) || "").toLowerCase();
+    return s === "pending" || s === "unconfirmed" || s === "buying";
+  }
+
   function failReason(t) {
     const e = String((t && (t.last_error || t.exit_reason)) || "").trim();
     const m = e.match(/price impact\s*(-?[\d.]+)\s*%/i);
@@ -250,10 +261,12 @@
   }
 
   function sideLabel(t) {
+    if (isRuggedTrade(t)) return "Rugged";
     if (isFailedTrade(t)) return "Buy failed";
     const s = String(t.side_or_status || "").toLowerCase();
+    if (s === "pending" || s === "unconfirmed" || s === "buying") return "Buying…";
     if (s === "open" || s === "opening" || s === "live") return "Open";
-    if (s === "exiting") return "Exiting";
+    if (s === "exiting" || s === "selling") return "Exiting";
     if (s === "buy" || s === "bought") return t.closed_at ? "Bought" : "Open";
     if (s === "sell" || s === "sold" || s === "closed" || s === "exited" || s === "exit") return "Sold";
     if (t.closed_at) return "Sold";
@@ -262,10 +275,10 @@
   }
 
   function isOpenTrade(t) {
-    if (isFailedTrade(t)) return false;
+    if (isFailedTrade(t) || isRuggedTrade(t)) return false;
     const s = String(t.side_or_status || "").toLowerCase();
-    if (["closed", "sold", "sell", "exited", "exit", "failed", "fail"].includes(s)) return false;
-    if (["open", "opening", "exiting", "live"].includes(s)) return true;
+    if (["closed", "sold", "sell", "exited", "exit", "failed", "fail", "rugged"].includes(s)) return false;
+    if (["open", "opening", "exiting", "selling", "live", "pending", "unconfirmed", "buying"].includes(s)) return true;
     if (t.closed_at) return false;
     return true;
   }
@@ -391,7 +404,8 @@
     return Math.round(s / 86400) + "d ago";
   }
 
-  function freshLabel(m) {
+  function freshLabel(m, t) {
+    if (t && isBuyingTrade(t) && (!m || m.price == null)) return { text: "Buying…", stale: false };
     if (!m || m.price == null) return { text: "No quote", stale: true };
     if (m.demo) return { text: "Sample", stale: false };
     if (m.receivedAt == null) return { text: "Time unknown", stale: true };
@@ -978,6 +992,11 @@
   }
 
   function tradeBits(t, mode) {
+    if (isRuggedTrade(t)) {
+      const bits = ["Rugged", "pool emptied"];
+      if (t.pnl_usd != null && t.pnl_usd !== "") bits.push(signedMoney(t.pnl_usd));
+      return bits;
+    }
     if (isFailedTrade(t)) {
       const bits = ["Buy failed"];
       const why = failReason(t);
@@ -1009,7 +1028,7 @@
 
   function openCard(t, index) {
     const m = liveMark(t);
-    const fresh = freshLabel(m);
+    const fresh = freshLabel(m, t);
     const fomo = String(t.mode || t.source || "").toUpperCase();
     const realRow = /FOMO|REAL|LIVE|WALLET/.test(fomo) || t.source === "fomo" || t.source === "wallet";
     const pill = srcPill(t);
@@ -1042,6 +1061,12 @@
   }
 
   function pnlMarkup(t) {
+    if (isRuggedTrade(t)) {
+      const pnl = t.pnl_usd;
+      if (pnl == null) return '<span class="pnl-col down">—</span>';
+      return '<span class="pnl-col ' + toneOf(pnl) + '">' + esc(signedMoney(pnl)) +
+        '<span class="pct">Rugged</span></span>';
+    }
     if (isFailedTrade(t)) return '<span class="pnl-col flat muted">—</span>';
     if (t.open) return gainMarkup(liveMark(t));
     if (t.pnl_usd == null) return "";
@@ -1693,7 +1718,7 @@
       row.append(usd, sep, pct);
     }
     renderCoinChart(t, mark);
-    const fresh = mark ? freshLabel(mark) : null;
+    const fresh = mark ? freshLabel(mark, t) : null;
     const rows = mark ? [
       ["Entry", mark.entry == null ? "unknown" : price(mark.entry)],
       ["Current", mark.price == null ? "unknown" : price(mark.price)],
@@ -2281,7 +2306,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v56"; /* real-trades-display-liq-v56 */
+      BuddySettings.hooks.version = "app v57"; /* rugged-live-push-v57 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
