@@ -107,7 +107,14 @@
     var card = $("#sessionsCard"), host = $("#pastSessions");
     if (!card || !host) return;
     var live = !!(s && (s.real_only || String(s.mode || "").toUpperCase() === "LIVE" || String(s.mode_label || "").toUpperCase() === "REAL"));
-    if (live) { card.hidden = true; return; }
+    if (live) {
+      card.hidden = false;
+      $("#sessionsTitle").textContent = "Sessions";
+      $("#sessionsMeta").textContent = "";
+      host.className = "";
+      host.innerHTML = '<p class="quiet">No real sessions yet. When the desk is on in REAL, each session will land here. Paper sessions stay on the PAPER page.</p>';
+      return;
+    }
     var d = s.dashboard || {};
     if (Array.isArray(d.sessions)) { card.hidden = false; renderBoxes(s, card, host); return; }
     var rows = Array.isArray(d.past_sessions) ? d.past_sessions : null;

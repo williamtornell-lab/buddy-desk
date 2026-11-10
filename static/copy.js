@@ -97,12 +97,15 @@
     if (!card) return;
     var live = !!(s && (s.real_only || String(s.mode || "").toUpperCase() === "LIVE" || String(s.mode_label || "").toUpperCase() === "REAL"));
     var L = s && s.lessons;
-    if (live || !L || typeof L !== "object") { card.hidden = true; return; }
+    if (!L || typeof L !== "object") { card.hidden = true; return; }
     card.hidden = false;
-    $("#lessonsMeta").textContent = (num(L.journal_n) || 0) + " trades reviewed";
+    var realSrc = live || L.source === "real";
+    $("#lessonsMeta").textContent = (num(L.journal_n) || 0) + (realSrc ? " real trades reviewed" : " trades reviewed");
     var html = "";
     var groups = Array.isArray(L.groups) ? L.groups : [];
-    if (!groups.length) html += '<p class="ls-empty">No closed paper trades yet.</p>';
+    if (!groups.length) html += realSrc
+      ? '<p class="ls-empty">No closed real trades yet. Wins, losses and P&amp;L by exit will show up here.</p>'
+      : '<p class="ls-empty">No closed paper trades yet.</p>';
     groups.slice(0, 3).forEach(function (g) {
       var head = '<p class="ls-g"><b>' + esc(g.label || g.group) + "</b> " + g.wins + "W/" + g.losses + "L · " +
         '<span class="' + ((g.pnl_usd || 0) >= 0 ? "up" : "down") + '">' + money(g.pnl_usd) + "</span>" +
@@ -120,7 +123,9 @@
         return '<li class="chg">' + esc(what) + ' <span class="ls-when">' + ago(a.ts) + "</span></li>";
       }).join("") + "</ul>";
     } else {
-      html += '<p class="ls-empty">None yet. Needs ' + (L.min_sample || 8) + "+ closed trades in a mode.</p>";
+      html += realSrc
+        ? '<p class="ls-empty">No automatic changes from real trades.</p>'
+        : '<p class="ls-empty">None yet. Needs ' + (L.min_sample || 8) + "+ closed trades in a mode.</p>";
     }
     var sug = Array.isArray(L.suggested) ? L.suggested : [];
     if (sug.length) {

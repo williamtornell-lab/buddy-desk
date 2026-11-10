@@ -314,12 +314,9 @@
     var isPaper = function (p) { return !/FOMO|REAL|WALLET|LIVE/i.test(String(p.mode || p.source || "PAPER")); };
     if (liveMode) {
       // Paper positions/trades stay off the REAL book. Real rows come from snap.real.
-      if (Array.isArray(s.activity) && Array.isArray(snap.activity)) {
-        var idsLive = {};
-        s.activity.forEach(function (a) { idsLive[a.id] = 1; });
-        var freshLive = snap.activity.filter(function (a) { return a.id != null && !idsLive[a.id]; });
-        if (freshLive.length) out.activity = freshLive.concat(s.activity).slice(0, 120);
-      }
+      var realActs = (out.real && Array.isArray(out.real.activity)) ? out.real.activity
+        : (snap.real && Array.isArray(snap.real.activity) ? snap.real.activity : null);
+      if (realActs) out.activity = realActs;
       if (Array.isArray(snap.pipeline)) {
         out.pipeline = snap.pipeline;
         if (out.dashboard && typeof out.dashboard === "object") {

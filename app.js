@@ -481,13 +481,17 @@
   }
 
   function activityOf(s) {
-    const rows = Array.isArray(s && s.activity) ? s.activity.slice() : [];
     const live = !!(s && effectiveMode(s).live);
+    const realActs = live && s && s.real && Array.isArray(s.real.activity) ? s.real.activity : null;
+    const rows = Array.isArray(realActs) && realActs.length
+      ? realActs.slice()
+      : (Array.isArray(s && s.activity) ? s.activity.slice() : []);
     if (!live) return rows;
     return rows.filter((a) => {
       const d = String((a && a.detail) || "").toLowerCase();
       const t = String((a && a.title) || "");
-      return d.indexOf("real") === 0 || /^REAL\s/.test(t) || t.indexOf("REAL bought") >= 0 || t.indexOf("REAL sold") >= 0;
+      const k = String((a && a.kind) || "").toLowerCase();
+      return d.indexOf("real") === 0 || /^REAL\s/.test(t) || t.indexOf("REAL bought") >= 0 || t.indexOf("REAL sold") >= 0 || t.indexOf("REAL partial") >= 0 || ((k === "buy" || k === "sell") && /real/i.test(d + " " + t));
     });
   }
 
@@ -2196,7 +2200,9 @@
     $("#seeActivity").hidden = activity.length <= 4;
     $("#homeActivity").innerHTML = homeTape.length
       ? homeTape.map(activityRow).join("")
-      : emptyTrades({ title: "No activity yet", body: "Scanner finds, waits, and exits will show on the tape." });
+      : emptyTrades(live
+        ? { title: "No activity yet", body: "Real buys and sells will show here with dollar and percent P&L." }
+        : { title: "No activity yet", body: "Scanner finds, waits, and exits will show on the tape." });
 
     $("#trades").innerHTML = state.trades.length
       ? groupedTrades(state.trades, rowIndex)
@@ -2206,7 +2212,9 @@
       });
     $("#activityFeed").innerHTML = activity.length
       ? activity.map(activityRow).join("")
-      : emptyTrades({ title: "No activity yet", body: "Scanner finds, waits, and exits will show on the tape." });
+      : emptyTrades(live
+        ? { title: "No activity yet", body: "Real buys and sells will show here with dollar and percent P&L." }
+        : { title: "No activity yet", body: "Scanner finds, waits, and exits will show on the tape." });
 
     const agentHost = $("#agentCards");
     agentHost.innerHTML = names.length
@@ -2438,7 +2446,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v68"; /* sell-now-fix-v68 */
+      BuddySettings.hooks.version = "app v69"; /* real-parity-sell-v69 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
@@ -2477,15 +2485,19 @@
     openDeskConfirm({ type: "sell", mint: sell.dataset.sell, name: sell.dataset.sellName });
     return true;
   }
-  // Capture phase: Sell now must not be swallowed by the trade card or other hooks.
-  document.addEventListener("click", (e) => {
+  function onSellPointer(e) {
     const sell = e.target && e.target.closest && e.target.closest("[data-sell]");
     if (!sell) return;
     e.preventDefault();
     e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
     askSellFrom(sell);
-  }, true);
-  document.addEventListener("click", (e) => {
+  }
+  // Capture phase: Sell now must not be swallowed by the trade card or other hooks.
+  // pointerup covers phones that drop the generated click.
+  document.addEventListener("click", onSellPointer, true);
+  document.addEventListener("pointerup", onSellPointer, true);
+  function onConfirmOk(e) {
     const ok = e.target && e.target.closest && e.target.closest("#modeConfirmOk");
     if (!ok) return;
     if (!pendingDesk) return;
@@ -2494,7 +2506,10 @@
     runDesk(action);
     e.preventDefault();
     e.stopPropagation();
-  }, true);
+    if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+  }
+  document.addEventListener("click", onConfirmOk, true);
+  document.addEventListener("pointerup", onConfirmOk, true);
 
   document.querySelector("main").addEventListener("click", (e) => {
     if (e.target.closest("a")) return;
