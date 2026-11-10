@@ -20,14 +20,17 @@
   function pkt(type, body) { return new Uint8Array([type].concat(mqttLen(body.length), body)); }
   function connectPkt() {
     var cid = "buddy-app-" + Math.random().toString(16).slice(2, 10);
-    var body = mqttStr("MQTT").concat([4, 0x02 | 0x80 | 0x40, 0, 30], mqttStr(cid), mqttStr("public"), mqttStr("public"));
+    // keepalive 60s; browser also pings every 20s via st.ping interval
+    var body = mqttStr("MQTT").concat([4, 0x02 | 0x80 | 0x40, 0, 60], mqttStr(cid), mqttStr("public"), mqttStr("public"));
     return pkt(0x10, body);
   }
   function subscribePkt(topic) { return pkt(0x82, [0, 1].concat(mqttStr(topic), [0])); }
-  function publishPkt(topic, payloadU8) {
+  function publishPkt(topic, payloadU8, qos, pid) {
     var t = mqttStr(topic);
-    var body = t.concat(Array.prototype.slice.call(payloadU8));
-    return pkt(0x30, body);
+    var body = t.slice();
+    if (qos) body = body.concat([(pid >> 8) & 255, pid & 255]);
+    body = body.concat(Array.prototype.slice.call(payloadU8));
+    return pkt(0x30 | (qos ? 0x02 : 0), body);
   }
 
   function parse(u8, cb) {
@@ -52,6 +55,9 @@
     var pend = st.pendingAcks[ack.cid];
     if (!pend) return;
     delete st.pendingAcks[ack.cid];
+    if (typeof pend._resolveWait === "function") {
+      try { pend._resolveWait(ack); } catch (e) { /* ignore */ }
+    }
     if (st.hooks.onAck) st.hooks.onAck(ack, pend);
   }
 
@@ -78,6 +84,14 @@
           ws.send(subscribePkt(topic));
           clearInterval(st.ping);
           st.ping = setInterval(function () { try { ws.send(new Uint8Array([0xc0, 0])); } catch (e) { /* ignore */ } }, 20000);
+          return;
+        }
+        if (type === 4) { // PUBACK
+          if (body.length >= 2) {
+            var paid = (body[0] << 8) | body[1];
+            var pr = st._pubacks && st._pubacks[paid];
+            if (pr) { delete st._pubacks[paid]; try { pr(true); } catch (e) {} }
+          }
           return;
         }
         if (type !== 3) return;
@@ -143,11 +157,40 @@
     return out;
   }
 
-  async function publishRaw(payloadU8) {
+  st._pubPid = 1;
+  st._pubacks = {};
+  function nextPubPid() {
+    var p = st._pubPid;
+    st._pubPid = st._pubPid >= 65535 ? 1 : st._pubPid + 1;
+    return p;
+  }
+
+  async function publishRaw(payloadU8, qos) {
     if (!st.cmdTopic) return false;
+    qos = qos ? 1 : 0;
+    function sendOn(ws, resolve) {
+      try {
+        if (!qos) { ws.send(publishPkt(st.cmdTopic, payloadU8, 0, 0)); resolve(true); return; }
+        var pid = nextPubPid();
+        var settled = false;
+        var timer = setTimeout(function () {
+          if (settled) return;
+          settled = true;
+          delete st._pubacks[pid];
+          resolve(true); // broker may still deliver; don't fail the cmd on missing PUBACK
+        }, 2500);
+        st._pubacks[pid] = function () {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          delete st._pubacks[pid];
+          resolve(true);
+        };
+        ws.send(publishPkt(st.cmdTopic, payloadU8, 1, pid));
+      } catch (e) { resolve(false); }
+    }
     if (st.ws && st.connected && st.ws.readyState === 1) {
-      st.ws.send(publishPkt(st.cmdTopic, payloadU8));
-      return true;
+      return await new Promise(function (resolve) { sendOn(st.ws, resolve); });
     }
     // Short-lived publish connection if the live socket is down.
     return await new Promise(function (resolve) {
@@ -159,29 +202,79 @@
       ws.onopen = function () { ws.send(connectPkt()); };
       ws.onmessage = function (ev) {
         parse(new Uint8Array(ev.data), function (type, _f, body) {
+          if (type === 4 && body.length >= 2) {
+            var paid = (body[0] << 8) | body[1];
+            var pr = st._pubacks[paid];
+            if (pr) pr();
+            return;
+          }
           if (type !== 2) return;
           if (body[1] !== 0) { if (!done) { done = true; clearTimeout(t); resolve(false); } return; }
-          try { ws.send(publishPkt(st.cmdTopic, payloadU8)); } catch (e) { if (!done) { done = true; clearTimeout(t); resolve(false); } return; }
-          setTimeout(function () { try { ws.close(); } catch (e) {} }, 200);
-          if (!done) { done = true; clearTimeout(t); resolve(true); }
+          sendOn(ws, function (ok) {
+            setTimeout(function () { try { ws.close(); } catch (e) {} }, 400);
+            if (!done) { done = true; clearTimeout(t); resolve(!!ok); }
+          });
         });
       };
       ws.onerror = function () { if (!done) { done = true; clearTimeout(t); resolve(false); } };
     });
   }
 
-  /** Publish an encrypted command. Returns {ok, cid}. Registers pending ack. */
-  async function sendCmd(cmd, meta) {
+  function waitAck(cid, timeoutMs) {
+    return new Promise(function (resolve) {
+      var done = false;
+      var pend = st.pendingAcks[cid] || (st.pendingAcks[cid] = { at: Date.now() });
+      var timer = setTimeout(function () {
+        if (done) return;
+        done = true;
+        resolve({ ok: false, timedOut: true, cid: cid });
+      }, timeoutMs || 5000);
+      pend._resolveWait = function (ack) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve({ ok: true, ack: ack, cid: cid });
+      };
+    });
+  }
+
+  /** Publish an encrypted command. Returns {ok, cid}. Registers pending ack.
+   *  Pass opts.cid to reuse an id (retries / ntfy dedupe). */
+  async function sendCmd(cmd, meta, opts) {
     if (!st.id) return { ok: false, cid: null };
-    var cid = newCid();
+    opts = opts || {};
+    var cid = opts.cid || newCid();
     try {
       var sealed = await sealCmd(cmd, cid);
-      var ok = await publishRaw(sealed);
-      if (ok) st.pendingAcks[cid] = Object.assign({ at: Date.now(), cmd: cmd }, meta || {});
+      var ok = await publishRaw(sealed, 1);
+      if (ok) {
+        var prev = st.pendingAcks[cid] || {};
+        st.pendingAcks[cid] = Object.assign({}, prev, { at: Date.now(), cmd: cmd }, meta || {});
+      }
       return { ok: ok, cid: cid };
     } catch (e) {
       return { ok: false, cid: cid };
     }
+  }
+
+  /** Publish and wait for cmd_ack; republish the same cid until ack or attempts exhausted. */
+  async function sendCmdReliable(cmd, meta, opts) {
+    opts = opts || {};
+    var timeoutMs = opts.timeoutMs || 5000;
+    var attempts = opts.attempts || 4;
+    var cid = newCid();
+    var last = { ok: false, cid: cid };
+    for (var i = 0; i < attempts; i++) {
+      last = await sendCmd(cmd, meta, { cid: cid });
+      if (!last.cid) last.cid = cid;
+      if (last.ok) {
+        var waited = await waitAck(cid, timeoutMs);
+        if (waited.ok) return { ok: true, cid: cid, ack: waited.ack, attempts: i + 1 };
+      } else {
+        await new Promise(function (r) { setTimeout(r, 400); });
+      }
+    }
+    return { ok: false, cid: cid, attempts: attempts };
   }
 
   /* Overlay a live snapshot on the full state.json (pure; returns a new object). */
@@ -264,7 +357,7 @@
   }
 
   root.BuddyLive = {
-    start: start, stop: stop, merge: merge, status: status, sendCmd: sendCmd, newCid: newCid,
+    start: start, stop: stop, merge: merge, status: status, sendCmd: sendCmd, sendCmdReliable: sendCmdReliable, waitAck: waitAck, newCid: newCid,
     snap: function () { return st.snap; },
     connected: function () { return st.connected; }
   };

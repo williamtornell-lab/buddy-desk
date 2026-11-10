@@ -36,8 +36,9 @@
     var p = pend[key];
     if (p && (p.on === on || Date.now() - p.at > 90000)) { delete pend[key]; p = null; }
     var shown = p ? p.on : on;
+    var subTxt = p ? "Sending…" : sub;
     return '<div class="set-row"><div class="set-txt"><span class="set-name">' + esc(label) + "</span>" +
-      (sub ? '<span class="set-sub">' + esc(sub) + "</span>" : "") + "</div>" + (extra || "") +
+      (subTxt ? '<span class="set-sub">' + esc(subTxt) + "</span>" : "") + "</div>" + (extra || "") +
       '<button type="button" class="cr-switch' + (shown ? " on" : "") + (p ? " busy" : "") + '" role="switch" aria-checked="' + on + '" aria-label="' + esc(label) + '"' +
       ' data-set-sw="' + esc(key) + '" data-on="' + (on ? "1" : "0") + '"' + (p ? " disabled" : "") + '><span class="cr-knob"></span></button></div>';
   }

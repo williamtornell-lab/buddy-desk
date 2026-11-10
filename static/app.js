@@ -1188,10 +1188,19 @@
       showErr("Needs a live desk link.");
       return false;
     }
+    showToast("Sending…", false);
     let cid = null;
     let mqttOk = false;
     let ntfyOk = false;
-    if (window.BuddyLive && typeof BuddyLive.sendCmd === "function") {
+    let acked = false;
+    if (window.BuddyLive && typeof BuddyLive.sendCmdReliable === "function") {
+      try {
+        const res = await BuddyLive.sendCmdReliable(body, toastMeta || {}, { timeoutMs: 5000, attempts: 4 });
+        mqttOk = !!(res && res.ok);
+        cid = res && res.cid;
+        acked = !!(res && res.ok && res.ack);
+      } catch (e) { /* fall through to ntfy */ }
+    } else if (window.BuddyLive && typeof BuddyLive.sendCmd === "function") {
       try {
         const res = await BuddyLive.sendCmd(body, toastMeta || {});
         mqttOk = !!(res && res.ok);
@@ -1202,32 +1211,40 @@
       try { cid = BuddyLive.newCid(); } catch (e) { cid = null; }
     }
     if (!cid) cid = "c" + Date.now().toString(16) + Math.random().toString(16).slice(2, 8);
-    try {
-      const r = await fetch("https://ntfy.sh/" + encodeURIComponent("b-" + target.id), {
-        method: "POST",
-        body: "cid=" + cid + "\n" + body,
-        headers: { "Content-Type": "text/plain;charset=utf-8" }
-      });
-      ntfyOk = r.ok;
-    } catch (e) { ntfyOk = false; }
-    if (!mqttOk && !ntfyOk) throw new Error("bad status");
-    return true;
+    // ntfy remains a slow fallback; skip if MQTT already acked
+    if (!acked) {
+      try {
+        const r = await fetch("https://ntfy.sh/" + encodeURIComponent("b-" + target.id), {
+          method: "POST",
+          body: "cid=" + cid + "\n" + body,
+          headers: { "Content-Type": "text/plain;charset=utf-8" }
+        });
+        ntfyOk = r.ok;
+      } catch (e) { ntfyOk = false; }
+      if (ntfyOk && window.BuddyLive && typeof BuddyLive.waitAck === "function" && !acked) {
+        try {
+          const waited = await BuddyLive.waitAck(cid, 8000);
+          acked = !!(waited && waited.ok);
+        } catch (e) { /* ignore */ }
+      }
+    }
+    if (!mqttOk && !ntfyOk && !acked) throw new Error("bad status");
+    return acked || mqttOk || ntfyOk;
   }
 
   async function runDesk(action) {
     try {
       if (action.type === "cmd") {
+        if (typeof action.after === "function") action.after();
+        if (state.data) render();
         let sent = 0;
         for (const c of action.cmds || []) {
-          if (await postDesk(c)) sent += 1;
+          // postDesk shows "Sending…", retries until cmd_ack; onAck toasts the desk reply.
+          if (await postDesk(c, { toast: action.toast || "Desk got it" })) sent += 1;
           if ((action.cmds || []).length > 1) await new Promise((r) => setTimeout(r, 350));
         }
-        if (sent) {
-          if (typeof action.after === "function") action.after();
-          showToast(action.toast || "Sent", false);
-          if (state.data) render();
-          window.setTimeout(load, 2000);
-        }
+        if (sent && state.data) render();
+        if (sent) window.setTimeout(load, 1200);
         return;
       }
       if (action.type === "style") {
@@ -2145,7 +2162,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v50"; /* sessions-v50 */
+      BuddySettings.hooks.version = "app v51"; /* cmd-latency-v51 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
