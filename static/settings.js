@@ -70,13 +70,21 @@
     var b = r.balance || {};
     var bal = b.ts ? (num(b.usdc) || 0).toFixed(2) + " USDC · " + (num(b.sol) || 0).toFixed(4) + " SOL" : "Checking…";
     var today = r.today || {};
-    var body = sw("real", !!r.armed, "Real auto", r.cap_tripped ? "Daily loss cap hit · off until tomorrow" : "Scalping only · auto buy/sell with real money");
+    var body = sw("real", !!r.armed, "Real auto", r.cap_tripped ? "Daily loss cap hit · off until tomorrow" : "Auto buy/sell with real money · $3/trade · shared max 5");
     if (r.address) {
       body += '<div class="set-row"><div class="set-txt"><span class="set-name">Hot wallet</span><span class="set-sub rl-addr">' + esc(r.address) + "</span></div>" +
         '<button type="button" class="chip" data-copy-addr="' + esc(r.address) + '">Copy</button></div>';
     }
     body += '<div class="set-row"><div class="set-txt"><span class="set-name">' + esc(bal) + '</span><span class="set-sub">Today ' + esc(signed(today.total)) + " · " +
       (num(r.open) || 0) + " open · $" + (num(r.exposure_usd) || 0).toFixed(2) + " / $" + rfmt("exposure_usd", num(lim.exposure_usd) || 0).slice(1) + " in trades</span></div></div>";
+    var rsubs = s.scalp_subs || {};
+    body += '<p class="set-group">Bots</p>';
+    ["quick", "runner", "moonshot"].forEach(function (k) {
+      if (!rsubs[k]) return;
+      body += sw("sub:" + k, !!rsubs[k].enabled, rsubs[k].label,
+        (rsubs[k].line || "") + " · real $3, shares max 5, rug guard");
+    });
+    body += '<div class="set-row"><div class="set-txt"><span class="set-name">Adaptive</span><span class="set-sub">Places real buys when Trading mode is Adaptive. Same $3 limits and rug guard.</span></div></div>';
     body += '<p class="set-group">Limits <span class="muted">max $' + (cap.per_trade_usd || 10) + " · $" + (cap.daily_loss_usd || 50) + " · $" + (cap.exposure_usd || 100) + "</span></p>";
     ["per_trade_usd", "max_open", "daily_loss_usd", "exposure_usd"].forEach(function (k) {
       var cur = num(lim[k]), v = redits[k] != null ? redits[k] : cur, hi = num(cap[k]) || cur;
