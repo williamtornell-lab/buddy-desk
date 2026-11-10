@@ -17,8 +17,16 @@
     "max_hold", "max_hold_h", "max_hold_min", "hold", "max_open", "max_positions"];
 
   var view = { preview: null, pending: null, pendingAt: 0, lastActive: null };
-  var hooks = { requestSwitch: null, toast: null, requestSub: null };
+  var hooks = { requestSwitch: null, toast: null, requestSub: null, confirm: null };
   var subPending = {};
+  var edits = {}; // "bot:key" -> number
+  var EXIT_ORDER = ["tp1_pct", "tp1_frac", "tp2_pct", "tp2_frac", "tp3_pct", "tp3_frac", "trail_start_pct", "trail_pct", "stop_pct"];
+  var EXIT_LABEL = {
+    tp1_pct: "TP1", tp1_frac: "TP1 sell", tp2_pct: "TP2", tp2_frac: "TP2 sell",
+    tp3_pct: "TP3", tp3_frac: "TP3 sell", trail_start_pct: "Trail start", trail_pct: "Trail", stop_pct: "Stop"
+  };
+  var EXIT_STEP = { tp1_pct: 1, tp2_pct: 1, tp3_pct: 1, tp1_frac: 0.05, tp2_frac: 0.05, tp3_frac: 0.05,
+    trail_start_pct: 1, trail_pct: 0.5, stop_pct: 0.5 };
 
   function $(s) { return document.querySelector(s); }
   function esc(s) {
@@ -236,6 +244,58 @@
     return modeTag + extra;
   }
 
+  function num(v) { var n = Number(v); return Number.isFinite(n) ? n : null; }
+  function fmtExit(k, v) {
+    var n = num(v);
+    if (n == null) return "—";
+    if (k.indexOf("_frac") >= 0) return Math.round(n * 100) + "%";
+    if (k === "stop_pct" || k === "trail_pct") return "−" + (n % 1 ? n.toFixed(1) : String(n)) + "%";
+    if (k === "trail_start_pct" || k.indexOf("_pct") >= 0) return "+" + (n % 1 ? n.toFixed(1) : String(n)) + "%";
+    return String(n);
+  }
+  function botsOf(s) { return (s && s.desk_settings && s.desk_settings.bots) || {}; }
+  function exitSpec(s, bot, k) {
+    var b = botsOf(s)[bot];
+    return b && b.values ? b.values[k] : null;
+  }
+  function dirtyIds(s) {
+    return Object.keys(edits).filter(function (id) {
+      var p = id.split(":"), sp = exitSpec(s, p[0], p[1]);
+      return sp && Math.abs(edits[id] - num(sp.value)) > 1e-9;
+    });
+  }
+  function stepper(bot, k, spec) {
+    var id = bot + ":" + k;
+    var v = edits[id] != null ? edits[id] : num(spec.value);
+    var changed = edits[id] != null && Math.abs(edits[id] - num(spec.value)) > 1e-9;
+    var lo = num(spec.lo), hi = num(spec.hi);
+    return '<div class="set-row bot-exit-row"><div class="set-txt"><span class="set-name">' + esc(EXIT_LABEL[k] || k) + "</span></div>" +
+      '<div class="stp"><button type="button" data-bot-stp="' + esc(id) + '" data-d="-1"' + (v <= lo + 1e-9 ? " disabled" : "") + ' aria-label="Lower">−</button>' +
+      '<span class="stp-v' + (changed ? " changed" : "") + '">' + esc(fmtExit(k, v)) + "</span>" +
+      '<button type="button" data-bot-stp="' + esc(id) + '" data-d="1"' + (v >= hi - 1e-9 ? " disabled" : "") + ' aria-label="Higher">+</button></div></div>';
+  }
+  function editorBlock(s, bot) {
+    var info = botsOf(s)[bot];
+    if (!info || !info.values) return "";
+    var keys = EXIT_ORDER.filter(function (k) { return info.values[k]; });
+    if (!keys.length) return "";
+    var rows = keys.map(function (k) { return stepper(bot, k, info.values[k]); }).join("");
+    return '<div class="bot-exits" data-bot-exits="' + esc(bot) + '"><p class="set-group">' + esc(info.label || bot) +
+      ' <span class="muted">New trades only · −8% hard stop stays</span></p>' + rows + "</div>";
+  }
+  function editorsHtml(s, shown) {
+    if (!shown) return "";
+    var html = editorBlock(s, shown.name);
+    if (shown.name === "scalping") {
+      ["quick", "runner", "moonshot"].forEach(function (b) { html += editorBlock(s, b); });
+    }
+    var dirty = dirtyIds(s);
+    if (html) {
+      html += '<button type="button" class="set-btn" data-bot-save' + (dirty.length ? "" : " disabled") + ">Save exit settings</button>";
+    }
+    return html ? '<div class="bot-exits-wrap">' + html + "</div>" : "";
+  }
+
   function render(s) {
     var card = $("#styleCard");
     if (!card) return;
@@ -274,7 +334,7 @@
       html += '<div class="style-more">' + (shown.description ? '<p class="style-text">' + esc(shown.description) + "</p>" : "") +
         (rows.length ? "<dl>" + rows.map(function (r) {
           return "<div><dt>" + esc(r[0] || "") + "</dt><dd>" + esc(r[1]) + "</dd></div>";
-        }).join("") + "</dl>" : "") + "</div>";
+        }).join("") + "</dl>" : "") + editorsHtml(s, shown) + "</div>";
     }
     var subs = s && s.scalp_subs;
     if (isActive && shown.name === "scalping" && subs && typeof subs === "object") {
@@ -324,6 +384,33 @@
     }
     var d = e.target.closest("[data-style-more]");
     if (d) { view.open = !view.open; render(s); return true; }
+    var st = e.target.closest("[data-bot-stp]");
+    if (st) {
+      var id = st.getAttribute("data-bot-stp"), dlt = Number(st.getAttribute("data-d"));
+      var parts = id.split(":"), sp = exitSpec(s, parts[0], parts[1]);
+      if (!sp) return true;
+      var cur = edits[id] != null ? edits[id] : num(sp.value);
+      var step = EXIT_STEP[parts[1]] || 0.5;
+      var nv = Math.round((cur + dlt * step) * 100) / 100;
+      nv = Math.min(num(sp.hi), Math.max(num(sp.lo), nv));
+      edits[id] = nv;
+      render(s);
+      return true;
+    }
+    if (e.target.closest("[data-bot-save]")) {
+      var ids = dirtyIds(s);
+      if (!ids.length || !hooks.confirm) return true;
+      var lines = ids.map(function (i) { var p = i.split(":"); return (EXIT_LABEL[p[1]] || p[1]) + " (" + (botsOf(s)[p[0]] || {}).label + ") → " + fmtExit(p[1], edits[i]); });
+      hooks.confirm({
+        title: "Save " + ids.length + " exit setting" + (ids.length > 1 ? "s" : "") + "?",
+        body: lines.join(" · ") + ". Applies to new PAPER and REAL trades. The −8% hard stop and rug checks stay as they are.",
+        ok: "Save",
+        cmds: ids.map(function (i) { var p = i.split(":"); return "set:" + p[0] + ":" + p[1] + "=" + edits[i]; }),
+        toast: "Settings sent",
+        after: function () { window.setTimeout(function () { edits = {}; }, 4000); }
+      });
+      return true;
+    }
     return false;
   }
 
