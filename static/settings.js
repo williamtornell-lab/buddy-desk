@@ -1,5 +1,5 @@
 /* Buddy Settings tab. Every change goes through app.js's confirm dialog and the
-   existing ntfy control path (hooks.confirm). PAPER only; REAL stays alerts-only. */
+   existing ntfy control path (hooks.confirm). PAPER and REAL are mutually exclusive. */
 (function (root) {
   "use strict";
   var hooks = { confirm: null, scalp: null, openKeys: null, liveText: null, version: "" };
@@ -65,14 +65,16 @@
   function signed(v) { var n = num(v); return n == null ? "—" : (n > 0 ? "+" : n < 0 ? "−" : "") + "$" + Math.abs(n).toFixed(2); }
   function realCard(s) {
     var r = s.real;
-    if (!r || !r.address) return "";
+    if (!r) return "";
     var lim = r.limits || {}, cap = r.hard_caps || {};
     var b = r.balance || {};
     var bal = b.ts ? (num(b.usdc) || 0).toFixed(2) + " USDC · " + (num(b.sol) || 0).toFixed(4) + " SOL" : "Checking…";
     var today = r.today || {};
-    var body = sw("real", !!r.armed, "Real auto", r.cap_tripped ? "Daily loss cap hit · off until tomorrow" : "Scalping only · real money · arm in Telegram");
-    body += '<div class="set-row"><div class="set-txt"><span class="set-name">Hot wallet</span><span class="set-sub rl-addr">' + esc(r.address) + "</span></div>" +
-      '<button type="button" class="chip" data-copy-addr="' + esc(r.address) + '">Copy</button></div>';
+    var body = sw("real", !!r.armed, "Real auto", r.cap_tripped ? "Daily loss cap hit · off until tomorrow" : "Scalping only · auto buy/sell with real money");
+    if (r.address) {
+      body += '<div class="set-row"><div class="set-txt"><span class="set-name">Hot wallet</span><span class="set-sub rl-addr">' + esc(r.address) + "</span></div>" +
+        '<button type="button" class="chip" data-copy-addr="' + esc(r.address) + '">Copy</button></div>';
+    }
     body += '<div class="set-row"><div class="set-txt"><span class="set-name">' + esc(bal) + '</span><span class="set-sub">Today ' + esc(signed(today.total)) + " · " +
       (num(r.open) || 0) + " open · $" + (num(r.exposure_usd) || 0).toFixed(2) + " / $" + rfmt("exposure_usd", num(lim.exposure_usd) || 0).slice(1) + " in trades</span></div></div>";
     body += '<p class="set-group">Limits <span class="muted">max $' + (cap.per_trade_usd || 10) + " · $" + (cap.daily_loss_usd || 50) + " · $" + (cap.exposure_usd || 100) + "</span></p>";
@@ -119,7 +121,7 @@
     var ds = s.desk_settings || {};
     var real = String(s.mode_label || s.mode || "").toUpperCase() === "REAL" || String(s.mode || "").toUpperCase() === "LIVE";
     var html = "";
-    $("#prefsMode").textContent = real ? "REAL · alerts only" : "PAPER";
+    $("#prefsMode").textContent = real ? "REAL · auto buy/sell" : "PAPER";
     $("#prefsMode").className = "set-pill" + (real ? " real" : "");
 
     // Desk master switch
@@ -312,7 +314,7 @@
       return true;
     }
     if (e.target.closest("[data-restart-everything]")) {
-      ask({ title: "Restart everything?", body: "Stops and relaunches the desk, publish loop and live feed. Open PAPER trades stay in the database and are picked up again. REAL stays alerts-only. Works even if the desk is currently down.",
+      ask({ title: "Restart everything?", body: "Stops and relaunches the desk, publish loop and live feed. Open PAPER and REAL trades stay in the database and are picked up again. Works even if the desk is currently down.",
         ok: "Restart everything", danger: true, cmds: ["restart:everything"], toast: "Restart everything sent" });
       return true;
     }
