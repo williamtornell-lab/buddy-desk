@@ -115,6 +115,60 @@
     return '<section class="dash-card set-card"><div class="dash-head"><h2>' + esc(title) + "</h2>" + (aside || "") + "</div>" + body + "</section>";
   }
 
+
+  function presetSummary(s) {
+    var pid = s.scan_preset || "fresh";
+    var st = s.scan_preset_settings || {};
+    function moneyk(v) {
+      v = Number(v); if (!Number.isFinite(v)) return "—";
+      if (v >= 1000000) return "$" + (Math.round(v / 100000) / 10) + "M";
+      if (v >= 1000) return "$" + Math.round(v / 1000) + "k";
+      return "$" + Math.round(v);
+    }
+    if (pid === "midcaps") {
+      return "Mcap " + moneyk(st.market_cap_min_usd || 120000) + "–" + moneyk(st.market_cap_max_usd || 30000000) +
+        " · liq ≥ " + moneyk(st.min_liquidity_usd || 40000) +
+        " · 1h vol ≥ " + moneyk(st.min_volume_h1_usd || 50000) +
+        " · age 30m–72h · LP must be burned/locked · top10 ≤ 25% · dev ≤ 3% · stop −6% · trail arms +12% · score 70+ · paper 8% of equity. REAL stays $3 / max 5 / $20 exposure / $25 daily loss.";
+    }
+    return "Saved fresh-coin filters: liq ≥ $5k, no mid-cap window, unlocked LP is a warning on REAL (not a hard block).";
+  }
+  function presetButtons(s) {
+    var list = s.scan_presets || [
+      { id: "fresh", label: "Current (fresh coins)", active: (s.scan_preset || "fresh") === "fresh" },
+      { id: "midcaps", label: "Mid caps 120k-30M", active: s.scan_preset === "midcaps" }
+    ];
+    return list.map(function (p) {
+      return '<button type="button" data-preset="' + esc(p.id) + '"' + (p.active ? ' class="on"' : "") + ">" + esc(p.label) + "</button>";
+    }).join("");
+  }
+  function renderHomePreset(s) {
+    var host = $("#presetSeg");
+    if (!host || !s) return;
+    host.innerHTML = presetButtons(s);
+    var note = $("#presetNote");
+    if (note) note.textContent = presetSummary(s);
+    var lab = $("#presetActive");
+    if (lab) lab.textContent = s.scan_preset_label || "";
+  }
+  function askPreset(id, s) {
+    if ((s.scan_preset || "fresh") === id) return;
+    var labels = { fresh: "Current (fresh coins)", midcaps: "Mid caps 120k-30M" };
+    ask({
+      title: "Switch to " + (labels[id] || id) + "?",
+      body: id === "midcaps"
+        ? "Only coins with market cap $120k–$30M, liquidity ≥ $40k, 1h volume ≥ $50k, and pair age 30m–72h will pass. LP must be burned/locked in this preset. REAL size limits stay $3 / max 5 / $20 exposure / $25 daily loss. You can switch back anytime."
+        : "Restores the saved fresh-coin filters, including the $5k liquidity floor. REAL size limits stay the same.",
+      ok: "Switch", cmds: ["preset:" + id], toast: "Switching preset…"
+    });
+  }
+  function onHomeClick(e, s) {
+    var t = e.target && e.target.closest && e.target.closest("[data-preset]");
+    if (!t) return false;
+    askPreset(t.getAttribute("data-preset"), s || {});
+    return true;
+  }
+
   function render(s) {
     var host = $("#prefsBody");
     if (!host || !s) return;
@@ -130,6 +184,10 @@
     var paused = !!ds.paused;
     // Single Desk on/off control: the big power button, filled in by session.js (BuddySession).
     html += card("Desk", '<div id="deskPower" class="desk-power ' + (paused ? "off" : "on") + '" aria-label="Desk power"></div>');
+
+    html += card("Coin filter",
+      '<div id="prefsPresetSeg" class="style-seg" role="group" aria-label="Coin filter presets">' + presetButtons(s) + "</div>" +
+      '<p class="set-sub" style="margin:8px 0 0">' + esc(presetSummary(s)) + "</p>");
 
     try { html += realCard(s); } catch (e) { /* real card optional */ }
 
@@ -205,6 +263,8 @@
   function onClick(e, s) {
     var host = $("#prefsBody");
     if (!host || !host.contains(e.target)) return false;
+    var prefBtn = e.target.closest && e.target.closest("[data-preset]");
+    if (prefBtn) { askPreset(prefBtn.getAttribute("data-preset"), s || {}); return true; }
     var ds = (s && s.desk_settings) || {};
     var t;
     if ((t = e.target.closest("[data-set-sw]"))) {
@@ -342,5 +402,5 @@
     return false;
   }
 
-  root.BuddySettings = { render: render, onClick: onClick, onInput: onInput, hooks: hooks };
+  root.BuddySettings = { render: render, onClick: onClick, onInput: onInput, hooks: hooks, renderHomePreset: renderHomePreset, onHomeClick: onHomeClick };
 })(typeof window !== "undefined" ? window : globalThis);

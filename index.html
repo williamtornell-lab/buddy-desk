@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=58"/>
+<link rel="stylesheet" href="static/app.css?v=59"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -75,6 +75,12 @@
           </div>
         </div>
       </div>
+
+      <section id="presetCard" class="dash-card" aria-labelledby="presetTitle">
+        <div class="dash-head"><h2 id="presetTitle">Coin filter</h2><span id="presetActive" class="style-active"></span></div>
+        <div id="presetSeg" class="style-seg" role="group" aria-label="Coin filter presets"></div>
+        <p id="presetNote" class="caption"></p>
+      </section>
 
       <section id="deskCard" class="dash-card" aria-labelledby="deskTitle" hidden>
         <div class="dash-head"><h2 id="deskTitle">Desk</h2><span id="deskCounts" class="muted"></span></div>
@@ -311,8 +317,8 @@
 <script src="static/live.js?v=6"></script>
 <script src="static/copy.js?v=3"></script>
 <script src="static/adaptive.js?v=1"></script>
-<script src="static/settings.js?v=8"></script>
+<script src="static/settings.js?v=9"></script>
 <script src="static/session.js?v=6"></script>
-  <script src="static/app.js?v=58"></script>
+  <script src="static/app.js?v=59"></script>
 </body>
 </html>

@@ -1910,7 +1910,7 @@
     }
     if (window.BuddyCopy) {
       try { BuddyCopy.render(s); } catch (e) { /* copy card is optional */ }
-      try { if (window.BuddySettings) BuddySettings.render(s); } catch (e) { /* settings tab is optional */ }
+      try { if (window.BuddySettings) { BuddySettings.render(s); if (BuddySettings.renderHomePreset) BuddySettings.renderHomePreset(s); } } catch (e) { /* settings tab is optional */ }
     }
     if (window.BuddyDash) {
       try { BuddyDash.render(s, live ? rPerf : paperPerf, live); } catch (e) { /* dashboard is optional */ }
@@ -2333,7 +2333,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v58"; /* real-wallet-nav-v58 */
+      BuddySettings.hooks.version = "app v59"; /* scan-presets-v59 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
@@ -2370,6 +2370,7 @@
     if (window.BuddyStyles && BuddyStyles.onClick(e, state.data)) return;
     if (window.BuddyCopy && BuddyCopy.onClick(e, state.data)) return;
     if (window.BuddySession && BuddySession.onClick(e, state.data)) return;
+    if (window.BuddySettings && BuddySettings.onHomeClick && BuddySettings.onHomeClick(e, state.data)) return;
     if (window.BuddySettings && BuddySettings.onClick(e, state.data)) return;
     if (window.BuddyAdaptive && BuddyAdaptive.onClick(e, state.data)) return;
     const sell = e.target.closest("[data-sell]");

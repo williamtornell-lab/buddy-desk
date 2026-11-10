@@ -1840,3 +1840,6 @@ html, body { touch-action: manipulation; }
 input, select, textarea,
 input[type="text"], input[type="number"], input[type="search"],
 .chip-in, .rl-in { font-size: 16px !important; }
+
+#presetCard { margin-top: 10px; }
+#presetNote { margin: 8px 0 0; }
