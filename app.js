@@ -422,27 +422,54 @@
   }
 
   function realWalletUsd(s) {
+    // Hot wallet only: USDC + SOL*price + marked open bags. Never FOMO or paper.
+    // meta.real_wallet_bal.sol_usd is the SOL *price*, not the SOL position value
+    // (15.70 + 82.24 was wrongly shown as $97.94).
     const r = (s && s.real) || {};
-    if (r.wallet_usd != null && Number.isFinite(Number(r.wallet_usd))) return Number(r.wallet_usd);
     const b = r.balance || {};
-    const usdc = num(b.usdc) || 0;
-    const sol = num(b.sol) || 0;
-    const px = num(b.sol_usd) || 0;
-    if (b && (b.usdc != null || b.sol != null)) return usdc + sol * px;
+    const usdc = num(b.usdc);
+    const solAmt = num(b.sol);
+    const px = num(b.sol_px) || num(b.sol_usd_px) || (solAmt != null && solAmt < 1000 ? num(b.sol_usd) : null);
+    if (usdc != null || solAmt != null) {
+      const cash = (usdc || 0) + (solAmt || 0) * (px || 0);
+      const marks = num(r.open_marks_usd) || 0;
+      return cash + marks;
+    }
+    if (r.wallet_usd != null && Number.isFinite(Number(r.wallet_usd))) return Number(r.wallet_usd);
     return null;
+  }
+
+  function realDayStartUsd(s) {
+    const r = (s && s.real) || {};
+    const direct = num(r.day_start_usd) || num((r.today || {}).start);
+    if (direct != null) return direct;
+    const raw = (Array.isArray(s.real_equity) && s.real_equity.length) ? s.real_equity
+      : (Array.isArray(r.equity) ? r.equity : []);
+    const startOfDay = (function () {
+      const now = new Date();
+      // Europe/Stockholm, UTC+1 in winter / +2 in summer; use the snapshot if it has a tz later.
+      const d = new Date(now.getTime());
+      // Midnight Stockholm: offset +1 or +2 from UTC. The server already prefers day_start_usd.
+      const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Stockholm", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+      return ymd;
+    })();
+    let first = null;
+    raw.forEach((p) => {
+      const ts = toUnix(p && (p.ts != null ? p.ts : p.t));
+      const bal = num(p && (p.balance != null ? p.balance : (p.equity != null ? p.equity : p.v)));
+      if (ts == null || bal == null || bal <= 0.01) return;
+      const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Stockholm", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ts * 1000));
+      if (ymd === startOfDay && first == null) first = bal;
+    });
+    return first;
   }
 
   function realPerformance(s) {
     const bal = realWalletUsd(s);
-    const today = ((s && s.real) || {}).today || {};
-    let usd = num(today.total);
-    if (usd == null && Array.isArray(((s && s.real) || {}).closed_trades)) {
-      usd = 0;
-      s.real.closed_trades.forEach((tr) => { usd += num(tr.pnl_usd) || 0; });
-    }
-    const start = (bal != null && usd != null) ? bal - usd : null;
+    const start = realDayStartUsd(s);
+    let usd = (bal != null && start != null) ? bal - start : num((((s && s.real) || {}).today || {}).total);
     const pct = (start && usd != null) ? (usd / start) * 100 : null;
-    return { start: start, known: start != null && start !== 0, bal: bal, usd: usd, pct: pct };
+    return { start: start, known: start != null, bal: bal, usd: usd, pct: pct };
   }
 
   function activityOf(s) {
@@ -2306,7 +2333,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v57"; /* rugged-live-push-v57 */
+      BuddySettings.hooks.version = "app v58"; /* real-wallet-nav-v58 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
