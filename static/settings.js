@@ -147,10 +147,6 @@
     if (!host || !s) return;
     host.className = "preset-seg";
     host.innerHTML = presetButtons(s);
-    var note = $("#presetNote");
-    if (note) note.textContent = presetSummary(s);
-    var lab = $("#presetActive");
-    if (lab) lab.textContent = s.scan_preset_label || "";
   }
   function askPreset(id, s) {
     if ((s.scan_preset || "fresh") === id) return;
@@ -187,8 +183,7 @@
     html += card("Desk", '<div id="deskPower" class="desk-power ' + (paused ? "off" : "on") + '" aria-label="Desk power"></div>');
 
     html += card("Coin filter",
-      '<div id="prefsPresetSeg" class="preset-seg" role="group" aria-label="Coin filter presets">' + presetButtons(s) + "</div>" +
-      '<p class="set-sub" style="margin:8px 0 0">' + esc(presetSummary(s)) + "</p>");
+      '<div id="prefsPresetSeg" class="preset-seg" role="group" aria-label="Coin filter presets">' + presetButtons(s) + "</div>");
 
     try { html += realCard(s); } catch (e) { /* real card optional */ }
 
