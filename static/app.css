@@ -1883,3 +1883,61 @@ input[type="text"], input[type="number"], input[type="search"],
 #presetCard { margin-top: 10px; padding: 10px 12px; }
 #presetCard .preset-seg { margin: 0; }
 #presetNote, #presetActive { display: none; }
+
+
+/* v64 · Waiting room 3-up cards (PAPER + REAL), including waiting-for-entry */
+#waiting {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
+}
+#waiting > .quiet,
+#waiting > .empty-card {
+  grid-column: 1 / -1;
+  padding: 18px 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  text-align: center;
+}
+#waiting > .wait-card { width: 100%; }
+.wait-card.wait-entry {
+  border-color: rgba(103, 232, 249, 0.35);
+  background:
+    linear-gradient(180deg, rgba(103, 232, 249, 0.10) 0%, transparent 48%),
+    linear-gradient(180deg, #17171b 0%, #111113 100%);
+}
+.wait-card .wait-pill {
+  margin-top: 2px;
+  font-size: 9.5px;
+  font-weight: 760;
+  padding: 3px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  color: var(--purple-soft);
+  background: rgba(167,139,250,0.1);
+  border: 1px solid rgba(167,139,250,0.2);
+}
+.wait-card.wait-entry .wait-pill {
+  color: #67e8f9;
+  background: rgba(103, 232, 249, 0.12);
+  border-color: rgba(103, 232, 249, 0.28);
+}
+.wait-card .wait-src {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  color: var(--faint);
+}
+@media (max-width: 560px) {
+  #waiting { grid-template-columns: repeat(2, 1fr); }
+}

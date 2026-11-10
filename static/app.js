@@ -1130,29 +1130,28 @@
     const age = w.age_min != null ? Number(w.age_min) : null;
     const holders = num(w.holders != null ? w.holders : coin.holders);
     const name = displayName(w.name ? w : coin);
+    const entryWait = !!(w.entry_wait || String(w.status || "").toLowerCase() === "waiting for entry");
+    const missing = String(w.missing || "").trim();
     const bits = [];
-    if (name && name.toUpperCase() !== String(ticker).toUpperCase()) bits.push(name);
-    if (holders != null) bits.push(holders < 1000 ? holders + " holders" : (holders / 1000).toFixed(holders >= 10000 ? 0 : 1) + "k holders");
+    if (missing) bits.push(missing);
+    else {
+      if (name && name.toUpperCase() !== String(ticker).toUpperCase()) bits.push(name);
+      if (holders != null) bits.push(holders < 1000 ? holders + " holders" : (holders / 1000).toFixed(holders >= 10000 ? 0 : 1) + "k holders");
+    }
     const ageTxt = age != null && Number.isFinite(age) ? (age < 1 ? "<1m" : Math.round(age) + "m") : "";
-    const status = String(w.status || "watching").toLowerCase();
-    const pill = ageTxt ? ageTxt : status;
-    const q = window.BuddyDash && BuddyDash.quote ? BuddyDash.quote(w.mint) : null;
-    const px = q && q.price != null && window.BuddyChart ? "$" + BuddyChart.fmtPrice(q.price) : "";
-    const ch = q && q.change != null ? q.change : null;
-    const chTxt = ch == null ? "" : (ch > 0 ? "+" : ch < 0 ? "−" : "") + Math.abs(ch).toFixed(Math.abs(ch) >= 100 ? 0 : 1) + "%";
+    const status = entryWait ? "waiting for entry" : String(w.status || "watching").toLowerCase();
+    const pill = entryWait ? "waiting for entry" : (ageTxt ? ageTxt : status);
+    const src = String(w.source || coin.source || "").trim();
     const mint = w.mint ? esc(w.mint) : "";
     const img = pickImageUrl(w) || pickImageUrl(coin);
     return (
-      '<div class="wait-row">' +
-      '<button type="button" class="wait-main" data-mint="' + mint + '">' +
+      '<button type="button" class="wait-card' + (entryWait ? " wait-entry" : "") + '" data-mint="' + mint + '">' +
       coinLogoHtml(w.mint, w.symbol || coin.symbol, w.name || coin.name, null, img) +
-      '<span class="who"><span class="ticker">$' + esc(String(ticker).replace(/^\$/, "")) + "</span>" +
-      (bits.length ? '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" : "") + "</span>" +
-      '<span class="wait-px">' + (px ? "<b>" + esc(px) + "</b>" : '<b class="flat">—</b>') +
-      (chTxt ? '<span class="' + (ch >= 0 ? "up" : "down") + '">' + esc(chTxt) + "</span>" : "") + "</span>" +
+      '<span class="ticker">$' + esc(String(ticker).replace(/^\$/, "")) + "</span>" +
+      (bits.length ? '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" : "") +
+      (src ? '<span class="wait-src">' + esc(src) + "</span>" : "") +
       '<span class="wait-pill" title="' + esc(status) + '">' + esc(pill) + "</span>" +
-      "</button>" + dexLink(w.mint, w) +
-      "</div>"
+      "</button>"
     );
   }
 
@@ -2003,17 +2002,22 @@
         stat("Free", money(freeSum)) + stat("Open", money(openSum)) + stat("Start", paperPerf.known ? money(paperPerf.start) : "—");
     }
 
-    const waiting = live ? [] : (Array.isArray(s.waiting) ? s.waiting.slice() : []);
-    waiting.sort((a, b) => (toUnix(b.migrated_at) || 0) - (toUnix(a.migrated_at) || 0));
+    const waiting = Array.isArray(s.waiting) ? s.waiting.slice() : [];
+    waiting.sort((a, b) => {
+      const ae = a && a.entry_wait ? 1 : 0;
+      const be = b && b.entry_wait ? 1 : 0;
+      if (ae !== be) return be - ae;
+      return (toUnix(b.migrated_at) || 0) - (toUnix(a.migrated_at) || 0);
+    });
     const waitEl = $("#waiting");
     const waitCount = $("#waitCount");
     const waitBlock = waitEl && waitEl.closest("section");
-    if (waitBlock) waitBlock.hidden = !!live;
+    if (waitBlock) waitBlock.hidden = false;
     if (waitCount) waitCount.textContent = waiting.length ? String(waiting.length) : "";
     if (waitEl) {
-      waitEl.innerHTML = live ? "" : (waiting.length
+      waitEl.innerHTML = waiting.length
         ? waiting.map(waitingRow).join("")
-        : emptyTrades({ title: "Waiting room empty", body: "Fresh migrants Buddy is watching will land here." }));
+        : emptyTrades({ title: "Waiting room empty", body: "Coins close to passing filters, and entries waiting for a pullback, land here." });
     }
 
     state.trades = tradesOf(s);
@@ -2339,7 +2343,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v63"; /* live-1s-fresh-throughput-v63 */
+      BuddySettings.hooks.version = "app v64"; /* waiting-real-entry-wait-v64 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {

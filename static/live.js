@@ -326,6 +326,7 @@
           out.dashboard = Object.assign({}, out.dashboard, { pipeline: snap.pipeline });
         }
       }
+      if (Array.isArray(snap.waiting)) out.waiting = snap.waiting;
       return out;
     }
     var livePos = (snap.positions || []).map(function (sp) {
@@ -382,6 +383,7 @@
         out.dashboard = Object.assign({}, out.dashboard, { pipeline: snap.pipeline });
       }
     }
+    if (Array.isArray(snap.waiting)) out.waiting = snap.waiting;
     return out;
   }
 
