@@ -1,4 +1,4 @@
-/* Buddy live channel: 5s desk snapshots over MQTT/WebSocket (port 443, free public broker).
+/* Buddy live channel: 1s desk snapshots when a trade is open (else 5s) over MQTT/WebSocket (port 443, free public broker).
    The desk encrypts each snapshot (AES-256-GCM); topic + key are derived from the private
    desk id in the link, so the broker only relays opaque bytes.
    Commands: the app also publishes encrypted commands on a separate cmd topic (same key). */

@@ -1922,9 +1922,14 @@
       try { BuddySpark.render(s, live ? rPerf : paperPerf, live, live ? null : liveEquityExtra(s, live)); } catch (e) { /* sparkline is optional */ }
     }
     const tsU = toUnix(s.ts);
-    const updated = s.live_ts && tsU
-      ? clock(tsU, true)
-      : clock(s.ts);
+    let quoteTs = 0;
+    Object.keys(state.quotes || {}).forEach((k) => {
+      const q = state.quotes[k];
+      const qt = (q && (q.receivedAt || q.requestedAt)) || 0;
+      if (qt > quoteTs) quoteTs = qt;
+    });
+    const freshTs = Math.max(tsU || 0, toUnix(s.live_ts) || 0, quoteTs || 0) || null;
+    const updated = freshTs ? clock(freshTs, true) : clock(s.ts);
     const prefix = (state.fixture || isDemoPreview()) ? "Demo · " : "";
     $("#updated").textContent = prefix + (updated ? "Updated " + updated : "Updated time unknown");
     document.title = "Buddy · " + (live ? (rPerf.bal != null ? money(rPerf.bal) : "REAL") : signedMoney(paperPerf.usd));
@@ -2242,6 +2247,7 @@
 
   let inflight = false;
   async function load() {
+    if (document.visibilityState === "hidden" && state.data) return;
 
     const target = dataPath();
     if (!target) {
@@ -2333,7 +2339,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v61"; /* preset-clean-real-bots-v61 */
+      BuddySettings.hooks.version = "app v63"; /* live-1s-fresh-throughput-v63 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
@@ -2543,8 +2549,8 @@
     dot.hidden = status === "off" || !state.data || state.fixture;
     dot.className = "live-dot " + (status === "live" ? "on" : "fb");
     dot.title = status === "live"
-      ? "Live: desk snapshot every 1s when a trade is open"
-      : (hasOpen ? "Live stream offline: prices polled every 1s, desk state every ~60s" : "Live stream offline: desk state every ~60s");
+      ? "Live: desk state, prices, value and P&L every 1s"
+      : (hasOpen ? "Live stream offline: prices polled every 1s, published state as it arrives" : "Live stream offline: published desk state as it arrives");
   }
   function startLive(id) {
     if (!window.BuddyLive || state.liveStarted) return;
@@ -2553,6 +2559,7 @@
       onSnap: (snap) => {
         if (!state.data || state.fixture) return;
         state.data = BuddyLive.merge(state.data, snap);
+        if (document.visibilityState === "hidden") return;
         const liveMarks = (snap.positions || []).concat(((snap.real && snap.real.open_trades) || []));
         liveMarks.forEach((sp) => {
           if (!sp.price || !sp.mint) return;
@@ -2579,10 +2586,26 @@
   }
 
   load();
-  setInterval(load, 3000);
-  // Prices for open coins: 1s when the live stream is down, 5s backup when it is up.
+  setInterval(() => {
+    if (document.visibilityState === "hidden") return;
+    // When the 1s MQTT snapshot is live, skip the published-file fetch to avoid flicker
+    // and overwriting fresh marks with a ~60s-old state.json. Still refetch every 15s
+    // for activity / waiting-room rows the live snap does not carry.
+    const live = window.BuddyLive && BuddyLive.status() === "live";
+    if (live && state.data && Date.now() - (state._lastFullLoad || 0) < 15000) {
+      if (BuddyLive.snap()) {
+        state.data = BuddyLive.merge(state.data, BuddyLive.snap());
+        render();
+      }
+      return;
+    }
+    state._lastFullLoad = Date.now();
+    load();
+  }, 1000);
+  // Prices for open coins: 1s from the server cache when live; 1s DexScreener backup otherwise.
   let lastQuotePoll = 0;
   setInterval(() => {
+    if (document.visibilityState === "hidden") return;
     const live = window.BuddyLive && BuddyLive.status() === "live";
     const every = live ? 5000 : 1000;
     if (Date.now() - lastQuotePoll < every) return;
