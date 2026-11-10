@@ -398,6 +398,17 @@
     return { start: start, known: start != null && start !== 0, bal: bal, usd: usd, pct: pct };
   }
 
+  function activityOf(s) {
+    const rows = Array.isArray(s && s.activity) ? s.activity.slice() : [];
+    const live = !!(s && effectiveMode(s).live);
+    if (!live) return rows;
+    return rows.filter((a) => {
+      const d = String((a && a.detail) || "").toLowerCase();
+      const t = String((a && a.title) || "");
+      return d.indexOf("real") === 0 || /^REAL\s/.test(t) || t.indexOf("REAL bought") >= 0 || t.indexOf("REAL sold") >= 0;
+    });
+  }
+
   function tradesOf(s) {
     const live = !!(s && effectiveMode(s).live);
     if (live) {
@@ -1979,7 +1990,7 @@
         body: "Coins Buddy buys and sells will show up here with dollar and percent P&L."
       });
 
-    const activity = Array.isArray(s.activity) ? s.activity.slice() : [];
+    const activity = activityOf(s);
     activity.sort((a, b) => (toUnix(b.ts) || 0) - (toUnix(a.ts) || 0));
     const homeTape = activity.slice(0, 4);
     $("#seeActivity").hidden = activity.length <= 4;
