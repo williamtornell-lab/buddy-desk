@@ -89,12 +89,14 @@
     var rdirty = Object.keys(redits).some(function (k) { return Math.abs(redits[k] - num(lim[k])) > 1e-9; });
     body += '<button type="button" class="set-btn" data-real-save' + (rdirty ? "" : " disabled") + ">Save limits</button>";
     body += '<button type="button" class="set-btn danger" data-real-sellall' + ((num(r.open) || 0) ? "" : " disabled") + ">Sell all real now</button>";
+    var payShow = r.payout_address ? short(r.payout_address) : (r.payout_short || "");
+    var paySaved = !!(payShow || r.payout_saved);
     body += '<p class="set-group">Send back to FOMO</p>';
-    body += '<div class="set-row"><div class="set-txt"><span class="set-name">' + (r.payout_address ? "To " + esc(short(r.payout_address)) : "No address saved") +
+    body += '<div class="set-row"><div class="set-txt"><span class="set-name">' + (payShow ? "To " + esc(payShow) : (paySaved ? "Address saved" : "No address saved")) +
       '</span><span class="set-sub">Your FOMO USDC (Solana) deposit address. Changes need a Telegram tap.</span></div></div>' +
-      '<div class="chips"><input id="payoutIn" class="chip-in rl-in" type="text" autocomplete="off" spellcheck="false" placeholder="' + (r.payout_address ? "New address" : "Paste address") + '"' +
+      '<div class="chips"><input id="payoutIn" class="chip-in rl-in" type="text" autocomplete="off" spellcheck="false" placeholder="' + (paySaved ? "New address" : "Paste address") + '"' +
       (payoutDraft ? ' value="' + esc(payoutDraft) + '"' : "") + '><button type="button" class="chip" data-payout-save' + (payoutDraft ? "" : " disabled") + ">Save</button></div>";
-    body += '<button type="button" class="set-btn ghost" data-real-withdraw' + (r.payout_address ? "" : " disabled") + ">Send all back to FOMO</button>";
+    body += '<button type="button" class="set-btn ghost" data-real-withdraw' + (paySaved ? "" : " disabled") + ">Send all back to FOMO</button>";
     var tr = Array.isArray(r.trades) ? r.trades.slice(0, 8) : [];
     if (tr.length) {
       body += '<p class="set-group">Real trades</p>' + tr.map(function (t) {
@@ -268,7 +270,8 @@
       return true;
     }
     if (e.target.closest("[data-real-withdraw]")) {
-      var pr = ((s && s.real) || {}).payout_address;
+      var rr = (s && s.real) || {};
+      var pr = rr.payout_address || rr.payout_short;
       if (!pr) return true;
       ask({ title: "Send everything back to FOMO?", body: "Turns Real auto off, sells all open real trades, then sends all USDC and the SOL (keeping ~0.005 for fees) to " + short(pr) + ". If a sell fails nothing is sent.",
         ok: "Send back", danger: true, cmds: ["real:withdraw"], toast: "Send back started" });

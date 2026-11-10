@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
 <meta name="theme-color" content="#000000"/>
 <meta name="color-scheme" content="dark"/>
 <meta name="mobile-web-app-capable" content="yes"/>
@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=54"/>
+<link rel="stylesheet" href="static/app.css?v=55"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -295,6 +295,13 @@
     <p>Open the link from Telegram. It carries your desk in the <code>#d=</code> hash.</p>
   </div>
 </div>
+<script>
+(function () {
+  function stop(e) { e.preventDefault(); }
+  document.addEventListener("gesturestart", stop, { passive: false });
+  document.addEventListener("gesturechange", stop, { passive: false });
+})();
+</script>
 <script src="static/lwc-4.2.3.js"></script>
 <script src="static/marks.js?v=1"></script>
 <script src="static/dexchart.js?v=3"></script>
@@ -304,8 +311,8 @@
 <script src="static/live.js?v=5"></script>
 <script src="static/copy.js?v=3"></script>
 <script src="static/adaptive.js?v=1"></script>
-<script src="static/settings.js?v=7"></script>
-<script src="static/session.js?v=5"></script>
-  <script src="static/app.js?v=54"></script>
+<script src="static/settings.js?v=8"></script>
+<script src="static/session.js?v=6"></script>
+  <script src="static/app.js?v=55"></script>
 </body>
 </html>

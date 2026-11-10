@@ -1829,3 +1829,9 @@ header { background: rgba(0, 0, 0, 0.92); }
 .ss-pnl span { font-size: 12px; font-weight: 700; }
 .ss-box.up .ss-pnl { color: var(--green); } .ss-box.down .ss-pnl { color: var(--red); } .ss-box.flat .ss-pnl { color: var(--muted); }
 .ss-sub { margin-top: 3px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* v55 · no page zoom on iPhone / home-screen web app */
+html, body { touch-action: manipulation; }
+input, select, textarea,
+input[type="text"], input[type="number"], input[type="search"],
+.chip-in, .rl-in { font-size: 16px !important; }

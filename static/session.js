@@ -1,6 +1,6 @@
 /* Buddy desk power button + Desk sessions.
    The one Desk ON/OFF button (Settings tab) sends the existing desk:on / desk:off command
-   (off = no new PAPER buys, open trades still managed). Turning off archives the
+   (off = no new paper or real buys, open trades still managed, not sold). Turning off archives the
    session counters; Insights lists past sessions. Power + session line only in Settings.
    Display only: balance, trades, equity chart and learning are not touched. */
 (function (root) {
@@ -39,11 +39,11 @@
   function renderPower(s) {
     var host = $("#deskPower");
     if (!host) return;
-    if (!s.desk_settings || isReal(s)) { host.hidden = true; return; }
+    if (!s.desk_settings) { host.hidden = true; return; }
     host.hidden = false;
     var st = deskOn(s);
     var sess = (s.dashboard && s.dashboard.session) || null;
-    var line = st.on ? "PAPER buys on · tap to turn off" : "Paused · open trades still managed · tap to turn on";
+    var line = st.on ? "New buys on · tap to turn off" : "Paused · open trades still managed · tap to turn on";
     if (st.busy) line = "Sending…";
     host.className = "desk-power " + (st.on ? "on" : "off") + (st.busy ? " busy" : "");
     host.innerHTML =
@@ -143,8 +143,8 @@
     if (!hooks.confirm) return true;
     hooks.confirm({
       title: on ? "Turn the desk on?" : "Turn the desk off?",
-      body: on ? "New PAPER buys start again in the active mode, copy and sub-bots."
-        : "Stops NEW PAPER buys. Open trades keep being managed and exited. The current Desk session is saved to Insights → Sessions and the Desk counters start from zero. Balance, trades, chart and learning stay.",
+      body: on ? "New paper and real buys start again. Open positions stay as they are. Real auto arming is unchanged."
+        : "Stops NEW paper and real buys. Open trades keep being managed and exited; open real positions are not sold. The current Desk session is saved and the Desk counters start from zero. Balance, trades, chart, learning and Real auto arming stay.",
       ok: on ? "Turn on" : "Turn off",
       cmds: ["desk:" + (on ? "on" : "off")],
       toast: "Sent",
