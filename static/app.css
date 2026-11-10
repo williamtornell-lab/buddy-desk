@@ -1841,5 +1841,41 @@ input, select, textarea,
 input[type="text"], input[type="number"], input[type="search"],
 .chip-in, .rl-in { font-size: 16px !important; }
 
+
+
+/* Coin-filter preset switch: one compact segmented control */
+.preset-seg {
+  display: flex;
+  width: 100%;
+  padding: 3px;
+  gap: 0;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.045);
+  border: 1px solid var(--line);
+  box-sizing: border-box;
+}
+.preset-seg button {
+  flex: 1 1 0;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 720;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .15s, background .15s;
+}
+.preset-seg button:hover { color: var(--text); }
+.preset-seg button.on {
+  background: rgba(48, 209, 88, 0.12);
+  color: var(--green);
+  font-weight: 760;
+}
 #presetCard { margin-top: 10px; }
-#presetNote { margin: 8px 0 0; }
+#presetNote { margin: 8px 2px 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
+#prefsPresetSeg { margin: 2px 0 8px; }

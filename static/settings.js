@@ -131,11 +131,11 @@
         " · 1h vol ≥ " + moneyk(st.min_volume_h1_usd || 50000) +
         " · age 30m–72h · LP must be burned/locked · top10 ≤ 25% · dev ≤ 3% · stop −6% · trail arms +12% · score 70+ · paper 8% of equity. REAL stays $3 / max 5 / $20 exposure / $25 daily loss.";
     }
-    return "Saved fresh-coin filters: liq ≥ $5k, no mid-cap window, unlocked LP is a warning on REAL (not a hard block).";
+    return "Fresh Coins: liq ≥ $5k, no mid-cap window, unlocked LP is a warning on REAL (not a hard block).";
   }
   function presetButtons(s) {
     var list = s.scan_presets || [
-      { id: "fresh", label: "Current (fresh coins)", active: (s.scan_preset || "fresh") === "fresh" },
+      { id: "fresh", label: "Fresh Coins", active: (s.scan_preset || "fresh") === "fresh" },
       { id: "midcaps", label: "Mid caps 120k-30M", active: s.scan_preset === "midcaps" }
     ];
     return list.map(function (p) {
@@ -145,6 +145,7 @@
   function renderHomePreset(s) {
     var host = $("#presetSeg");
     if (!host || !s) return;
+    host.className = "preset-seg";
     host.innerHTML = presetButtons(s);
     var note = $("#presetNote");
     if (note) note.textContent = presetSummary(s);
@@ -153,12 +154,12 @@
   }
   function askPreset(id, s) {
     if ((s.scan_preset || "fresh") === id) return;
-    var labels = { fresh: "Current (fresh coins)", midcaps: "Mid caps 120k-30M" };
+    var labels = { fresh: "Fresh Coins", midcaps: "Mid caps 120k-30M" };
     ask({
       title: "Switch to " + (labels[id] || id) + "?",
       body: id === "midcaps"
         ? "Only coins with market cap $120k–$30M, liquidity ≥ $40k, 1h volume ≥ $50k, and pair age 30m–72h will pass. LP must be burned/locked in this preset. REAL size limits stay $3 / max 5 / $20 exposure / $25 daily loss. You can switch back anytime."
-        : "Restores the saved fresh-coin filters, including the $5k liquidity floor. REAL size limits stay the same.",
+        : "Restores Fresh Coins filters, including the $5k liquidity floor. REAL size limits stay the same.",
       ok: "Switch", cmds: ["preset:" + id], toast: "Switching preset…"
     });
   }
@@ -186,7 +187,7 @@
     html += card("Desk", '<div id="deskPower" class="desk-power ' + (paused ? "off" : "on") + '" aria-label="Desk power"></div>');
 
     html += card("Coin filter",
-      '<div id="prefsPresetSeg" class="style-seg" role="group" aria-label="Coin filter presets">' + presetButtons(s) + "</div>" +
+      '<div id="prefsPresetSeg" class="preset-seg" role="group" aria-label="Coin filter presets">' + presetButtons(s) + "</div>" +
       '<p class="set-sub" style="margin:8px 0 0">' + esc(presetSummary(s)) + "</p>");
 
     try { html += realCard(s); } catch (e) { /* real card optional */ }
