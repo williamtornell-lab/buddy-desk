@@ -1297,6 +1297,7 @@
 
   let pendingMode = null;
   let pendingDesk = null;
+  let confirmArmedAt = 0;
   let modeUiBusy = false;
 
   function showToast(text, isReal) {
@@ -1352,6 +1353,7 @@
   function openDeskConfirm(action) {
     pendingDesk = action;
     pendingMode = null;
+    confirmArmedAt = Date.now() + 500;
     const box = $("#modeConfirm");
     const title = $("#modeConfirmTitle");
     const body = $("#modeConfirmBody");
@@ -2482,6 +2484,7 @@
     if (!el) return false;
     const sell = el.closest ? el.closest("[data-sell]") : null;
     if (!sell) return false;
+    confirmArmedAt = Date.now() + 500; // ignore a ghost click on the newly shown OK button
     openDeskConfirm({ type: "sell", mint: sell.dataset.sell, name: sell.dataset.sellName });
     return true;
   }
@@ -2494,13 +2497,18 @@
     askSellFrom(sell);
   }
   // Capture phase: Sell now must not be swallowed by the trade card or other hooks.
-  // pointerup covers phones that drop the generated click.
+  // pointerup covers phones that drop the generated click; confirmArmedAt blocks a ghost OK tap.
   document.addEventListener("click", onSellPointer, true);
   document.addEventListener("pointerup", onSellPointer, true);
   function onConfirmOk(e) {
     const ok = e.target && e.target.closest && e.target.closest("#modeConfirmOk");
     if (!ok) return;
     if (!pendingDesk) return;
+    if (Date.now() < confirmArmedAt) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     const action = pendingDesk;
     closeModeConfirm();
     runDesk(action);
