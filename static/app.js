@@ -2445,6 +2445,7 @@
   if (window.BuddyStyles) {
     BuddyStyles.hooks.requestSwitch = (a) => openDeskConfirm({ type: "style", name: a.name, label: a.label });
     BuddyStyles.hooks.toast = (t) => showToast(t, false);
+    BuddyStyles.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
   }
   if (window.BuddyCopy) {
     BuddyCopy.hooks.request = (on) => openDeskConfirm({ type: "copy", on: !!on });
