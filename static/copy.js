@@ -120,7 +120,7 @@
         return '<li class="chg">' + esc(what) + ' <span class="ls-when">' + ago(a.ts) + "</span></li>";
       }).join("") + "</ul>";
     } else {
-      html += '<p class="ls-empty">None yet. Needs ' + (L.min_sample || 8) + "+ closed trades in a mode; each change ≤20%.</p>";
+      html += '<p class="ls-empty">None yet. Needs ' + (L.min_sample || 8) + "+ closed trades in a mode.</p>";
     }
     var sug = Array.isArray(L.suggested) ? L.suggested : [];
     if (sug.length) {

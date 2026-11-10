@@ -224,13 +224,13 @@
       }
       var dirty = Object.keys(edits).some(function (id) { return isDirty(ds, id); });
       body += '<button type="button" class="set-btn" data-save-edits' + (dirty ? "" : " disabled") + ">Save changes</button>";
-      html += card("Bot settings", body, '<span class="muted">±20% of approved</span>');
+      html += card("Bot settings", body, '<span class="muted">New trades only</span>');
     }
 
     // Notifications + learning
     var nt = ds.notify || {};
     html += card("Notifications", sw("notify:buys", nt.buys !== false, "Buy alerts") + sw("notify:sells", nt.sells !== false, "Sell alerts"));
-    html += card("Learning", sw("learn", ds.learn_enabled !== false, "Learning loop", "Small paper tweaks within ±20%") +
+    html += card("Learning", sw("learn", ds.learn_enabled !== false, "Learning loop", "Loosen-only Fresh entry tweaks, no 20% cap") +
       '<button type="button" class="set-btn ghost" data-learn-undo>Undo last learning change</button>');
 
     // Close all
@@ -292,7 +292,7 @@
       };
       var bodies = {
         desk: on ? "New PAPER buys start again in the active mode, copy and sub-bots." : "Stops NEW buys only. Open trades keep being managed and exited.",
-        learn: on ? "The learner reviews closed paper trades every 10 min and makes small changes within ±20%." : "No more automatic paper tweaks. Lessons stay visible."
+        learn: on ? "The learner reviews closed paper trades every 10 min and may loosen Fresh entry filters (no 20% cap). It never changes REAL dollar limits, mint/freeze, honeypot, or sellability." : "No more automatic paper tweaks. Lessons stay visible."
       };
       ask({ title: titles[key] || ((on ? "Turn on " : "Turn off ") + key.split(":")[1] + " alerts?"),
         body: bodies[key] || "Telegram " + key.split(":")[1] + " alerts " + (on ? "on." : "off."), ok: on ? "Turn on" : "Turn off",
@@ -316,7 +316,7 @@
       var rl3 = ((s && s.real) || {}).limits || {};
       var rks = Object.keys(redits).filter(function (k) { return Math.abs(redits[k] - num(rl3[k])) > 1e-9; });
       if (!rks.length) return true;
-      ask({ title: "Save real limits?", body: rks.map(function (k) { return RLAB[k] + " → " + rfmt(k, redits[k]); }).join(" · ") + ". Lower limits apply now; higher ones need a Telegram tap. Hard caps: $10 per trade, $50 daily loss, $100 exposure.",
+      ask({ title: "Save real limits?", body: rks.map(function (k) { return RLAB[k] + " → " + rfmt(k, redits[k]); }).join(" · ") + ". Lower limits apply now; higher ones need a Telegram tap. Hard caps: $10 per trade, max 8 open, $50 daily loss, $100 exposure.",
         ok: "Save", cmds: rks.map(function (k) { return "real:set:" + k + "=" + redits[k]; }), toast: "Limits sent",
         after: function () { window.setTimeout(function () { redits = {}; }, 4000); } });
       return true;
@@ -364,7 +364,7 @@
       var ids = Object.keys(edits).filter(function (i) { return isDirty(ds, i); });
       if (!ids.length) return true;
       var lines = ids.map(function (i) { var k = i.split(":")[1]; return (i.indexOf("copy:") === 0 ? "Copy " : "") + (LABEL[k] || k) + " → " + fmt(k, edits[i]); });
-      ask({ title: "Save " + ids.length + " change" + (ids.length > 1 ? "s" : "") + "?", body: lines.join(" · ") + ". New trades only; the desk rejects anything outside ±20% of the approved values.",
+      ask({ title: "Save " + ids.length + " change" + (ids.length > 1 ? "s" : "") + "?", body: lines.join(" · ") + ". New trades only.",
         ok: "Save", cmds: ids.map(function (i) { var p = i.split(":"); return "set:" + p[0] + ":" + p[1] + "=" + edits[i]; }), toast: "Settings sent",
         after: function () { window.setTimeout(function () { edits = {}; }, 4000); } });
       return true;

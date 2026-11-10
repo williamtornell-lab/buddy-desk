@@ -1253,7 +1253,7 @@
     if (!box || !title || !body || !ok) return;
     if (next === "real") {
       title.textContent = "Switch to REAL?";
-      body.textContent = "The desk will auto-buy and auto-sell on the hot wallet (Scalping, $3 per trade, max 3 open, $20 exposure, $8 daily loss cap). New paper buys stop; open paper trades keep their exits. Real and paper cannot be on together.";
+      body.textContent = "The desk will auto-buy and auto-sell on the hot wallet (Scalping + Quick + Runner + Moonshot can each take their own $3 fill, max 8 open, $24 exposure, $50 daily loss cap). New paper buys stop; open paper trades keep their exits. Real and paper cannot be on together.";
       ok.classList.add("danger");
       ok.textContent = "Switch to REAL";
     } else {
