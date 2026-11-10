@@ -1,6 +1,6 @@
-/* Buddy hero sparkline: minimal glowing PAPER equity line under the balance.
-   Series = published equity since the last PAPER reset, plus values this browser
-   saw (balance + live unrealized from open PAPER marks). No axes, no grid. */
+/* Buddy hero sparkline: same look, ranges and zoom in PAPER and REAL.
+   PAPER: equity since the last paper reset, plus live paper marks.
+   REAL: hot-wallet USDC+SOL series only — never paper numbers. */
 (function (root) {
   "use strict";
   var UP = "#30d158", DOWN = "#ff453a", FLAT = "#30d158";
@@ -55,11 +55,15 @@
   }
 
   /* ---- series ---- */
-  function buildSeries(s, perf, extra, nowTs) {
+  function buildSeries(s, perf, extra, nowTs, live) {
     var d = s.dashboard || {};
-    var since = num(d.since) || unix(s.paper_reset_at) || null;
-    var start = perf && perf.known ? perf.start : null;
-    var pts = (Array.isArray(s.equity) ? s.equity : []).map(function (p) {
+    var src = live
+      ? (Array.isArray(s.real_equity) && s.real_equity.length ? s.real_equity
+        : (s.real && Array.isArray(s.real.equity) && s.real.equity.length ? s.real.equity : []))
+      : (Array.isArray(s.equity) ? s.equity : []);
+    var since = live ? null : (num(d.since) || unix(s.paper_reset_at) || null);
+    var start = live ? null : (perf && perf.known ? perf.start : null);
+    var pts = src.map(function (p) {
       return { ts: unix(p && (p.ts != null ? p.ts : p.t)), v: num(p && (p.balance != null ? p.balance : p.equity)) };
     }).filter(function (p) { return p.ts != null && p.v != null; });
     if (since) {
@@ -68,7 +72,7 @@
       var anchor = start != null ? start : (before ? before.v : (pts[0] && pts[0].v));
       if (anchor != null) pts.unshift({ ts: since, v: anchor });
     }
-    var key = String(since || "") + "|" + String(start || "");
+    var key = (live ? "real|" : "paper|") + String(since || "") + "|" + String(start || "");
     if (st.seenKey !== key) {
       st.seenKey = key;
       st.seen = [];
@@ -77,7 +81,7 @@
         if (saved && saved.key === key && Array.isArray(saved.pts)) st.seen = saved.pts.slice(-600);
       } catch (e) { /* ignore */ }
     }
-    var liveV = perf ? perf.bal + (extra || 0) : null;
+    var liveV = perf && perf.bal != null ? (perf.bal + (live ? 0 : (extra || 0))) : null;
     if (liveV != null && Number.isFinite(liveV)) {
       var last = st.seen[st.seen.length - 1];
       if (!last || nowTs - last.ts >= 5 || Math.abs(last.v - liveV) > 0.004) {
@@ -296,7 +300,7 @@
     if (live || !perf) { wrap.hidden = true; return; }
     wrap.hidden = false;
     var nowTs = Date.now() / 1000;
-    var series = buildSeries(s, perf, extra, nowTs);
+    var series = buildSeries(s, perf, extra, nowTs, live);
     document.querySelectorAll("#sparkRanges [data-spark]").forEach(function (b) {
       b.classList.toggle("on", b.getAttribute("data-spark") === st.range);
     });

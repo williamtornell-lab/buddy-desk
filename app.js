@@ -131,13 +131,17 @@
 
   function opensForMode(s, trades, live) {
     if (live) {
-      const raw = Array.isArray(s.fomo_holdings) && s.fomo_holdings.length
-        ? s.fomo_holdings
-        : (Array.isArray(s.positions) ? s.positions.filter(isFomoRow) : []);
+      const real = (s && s.real) || {};
+      const raw = Array.isArray(real.open_trades) && real.open_trades.length
+        ? real.open_trades
+        : (Array.isArray(s.positions) ? s.positions.filter(function (p) {
+            const src = String((p && (p.source || p.mode)) || "").toUpperCase();
+            return src === "REAL" || src === "WALLET" || src === "LIVE";
+          }) : []);
       return raw.map((p) => {
         const t = normalizeTrade(p, s, true);
-        t.source = p.source || t.source || "fomo";
-        t.mode = "FOMO";
+        t.source = p.source || t.source || "wallet";
+        t.mode = "REAL";
         if (!t.open && !t.closed_at) t.open = true;
         return t;
       });
@@ -370,7 +374,56 @@
     return valueBit + (pnlBit ? " · " + pnlBit : "") + miss;
   }
 
+  function realWalletUsd(s) {
+    const r = (s && s.real) || {};
+    if (r.wallet_usd != null && Number.isFinite(Number(r.wallet_usd))) return Number(r.wallet_usd);
+    const b = r.balance || {};
+    const usdc = num(b.usdc) || 0;
+    const sol = num(b.sol) || 0;
+    const px = num(b.sol_usd) || 0;
+    if (b && (b.usdc != null || b.sol != null)) return usdc + sol * px;
+    return null;
+  }
+
+  function realPerformance(s) {
+    const bal = realWalletUsd(s);
+    const today = ((s && s.real) || {}).today || {};
+    let usd = num(today.total);
+    if (usd == null && Array.isArray(((s && s.real) || {}).closed_trades)) {
+      usd = 0;
+      s.real.closed_trades.forEach((tr) => { usd += num(tr.pnl_usd) || 0; });
+    }
+    const start = (bal != null && usd != null) ? bal - usd : null;
+    const pct = (start && usd != null) ? (usd / start) * 100 : null;
+    return { start: start, known: start != null && start !== 0, bal: bal, usd: usd, pct: pct };
+  }
+
   function tradesOf(s) {
+    const live = !!(s && effectiveMode(s).live);
+    if (live) {
+      const r = s.real || {};
+      const rows = []
+        .concat(Array.isArray(r.open_trades) ? r.open_trades : [])
+        .concat(Array.isArray(r.closed_trades) ? r.closed_trades : [])
+        .concat(Array.isArray(r.trades) ? r.trades : []);
+      const seen = {};
+      const out = [];
+      rows.forEach((tr) => {
+        const k = String(tr.id != null ? tr.id : (tr.mint || "") + "|" + (tr.opened_at || ""));
+        if (seen[k]) return;
+        seen[k] = 1;
+        const t = normalizeTrade(tr, s, false);
+        t.mode = "REAL";
+        t.source = t.source || "wallet";
+        out.push(t);
+      });
+      return out.sort((a, b) => {
+        if (a.open !== b.open) return a.open ? 1 : -1;
+        const ta = toUnix(a.closed_at || a.opened_at) || 0;
+        const tb = toUnix(b.closed_at || b.opened_at) || 0;
+        return tb - ta;
+      });
+    }
     const rows = Array.isArray(s.trades)
       ? s.trades.map((t) => normalizeTrade(t, s, false))
       : (Array.isArray(s.positions) ? s.positions.map((p) => normalizeTrade(p, s, true)) : []);
@@ -1094,12 +1147,12 @@
     if (!box || !title || !body || !ok) return;
     if (next === "real") {
       title.textContent = "Switch to REAL?";
-      body.textContent = "Alerts-only. Telegram will say REAL. Buys/sells need your Bought/Sold tap. Buddy never places FOMO orders.";
+      body.textContent = "The desk will auto-buy and auto-sell on the hot wallet (Scalping, $3 per trade, max 3 open, $20 exposure, $8 daily loss cap). New paper buys stop; open paper trades keep their exits. Real and paper cannot be on together.";
       ok.classList.add("danger");
       ok.textContent = "Switch to REAL";
     } else {
       title.textContent = "Switch to PAPER?";
-      body.textContent = "Paper auto-fills every signal. Telegram will say PAPER. Stack and stops stay simulated.";
+      body.textContent = "Paper will auto-buy and auto-sell again. Real auto turns off; open real trades keep their exits.";
       ok.classList.remove("danger");
       ok.textContent = "Switch to PAPER";
     }
@@ -1131,7 +1184,7 @@
     }
     if (action.type === "style") {
       title.textContent = "Switch to " + (action.label || action.name) + "?";
-      body.textContent = "Applies to new trades only. Open trades keep the rules they were opened with. PAPER fills only; REAL stays alerts-only.";
+      body.textContent = "Applies to new trades only. Open trades keep the rules they were opened with. PAPER and REAL cannot run at the same time.";
       ok.textContent = "Switch";
       ok.classList.remove("danger");
       box.hidden = false;
@@ -1158,7 +1211,7 @@
     if (action.type === "copy") {
       title.textContent = action.on ? "Turn copy trading on?" : "Turn copy trading off?";
       body.textContent = action.on
-        ? "PAPER only. Copies buys of the top FOMO traders: $20 each, max 5 open, sharing the paper balance. Runs alongside your trading mode. REAL stays alerts-only."
+        ? "PAPER only. Copies buys of the top FOMO traders: $20 each, max 5 open, sharing the paper balance. Runs alongside paper mode. Off in REAL."
         : "Stops new copies. Open copies still exit when the trader sells, or by stop, TP or 2 h.";
       ok.textContent = action.on ? "Turn on" : "Turn off";
       ok.classList.remove("danger");
@@ -1314,8 +1367,8 @@
       syncModeSwitch(next);
       showToast(
         next === "real"
-          ? "🔴 REAL mode ON: alerts only, you place trades on FOMO"
-          : "🟢 PAPER mode ON: auto buy/sell, no real money",
+          ? "🔴 REAL mode ON: auto buy/sell on the hot wallet"
+          : "🟢 PAPER mode ON: auto buy/sell paper · real auto off",
         next === "real"
       );
       if (state.data) {
@@ -1515,7 +1568,7 @@
     const fresh = state.coinMint !== mint;
     state.coinMint = mint;
     state.coinTrade = t;
-    const mode = (state.data && String(state.data.mode || "").toUpperCase() === "REAL") ? "REAL" : "PAPER";
+    const mode = (state.data && effectiveMode(state.data).live) ? "REAL" : "PAPER";
     const fills = coinFillsFor(mint);
     const opened = t && t.opened_at != null && t.entry != null && !t.watched;
     const focusKey = opened ? String(Number(t.opened_at)) + "|" + String(Number(t.entry)) : "";
@@ -1685,13 +1738,12 @@
     const label = modeInfo.label;
     const live = modeInfo.live;
     const fomoBal = num(s.fomo_balance_usd);
-    const perf = live
-      ? { start: fomoBal != null ? fomoBal : 0, known: false, bal: fomoBal != null ? fomoBal : 0, usd: 0, pct: 0 }
-      : paperPerf;
-    const tone = live ? "flat" : toneOf(paperPerf.usd);
+    const rPerf = live ? realPerformance(s) : paperPerf;
+    const perf = rPerf;
+    const tone = toneOf(perf && perf.usd);
     const app = $("#app");
     app.classList.remove("tone-up", "tone-down", "tone-flat");
-    app.classList.add("tone-" + tone);
+    app.classList.add("tone-" + (tone || "flat"));
 
     syncModeSwitch(live ? "real" : "paper");
     const toastText = String(s.mode_toast || "");
@@ -1706,22 +1758,34 @@
 
     const banner = $("#modeBanner");
     if (banner) banner.hidden = !live;
-    $("#stackLabel").textContent = live ? "FOMO balance" : "Paper balance";
+    $("#stackLabel").textContent = live ? "Wallet balance" : "Paper balance";
     const realRow = $("#realBalRow");
     if (realRow) realRow.hidden = true;
-    let heroText = money(live ? fomoBal : paperPerf.bal);
-    if (live && fomoBal == null) {
-      const st = s.fomo_holdings_status || {};
-      heroText = (st && String(st.status || "").indexOf("missing") === 0) ? "wallet/API needed" : "—";
+    let heroText;
+    if (live) {
+      heroText = perf.bal != null ? money(perf.bal) : "—";
+    } else {
+      heroText = money(paperPerf.bal);
     }
-    if (window.BuddySpark && heroText === money(live ? fomoBal : paperPerf.bal)) BuddySpark.tween($("#bal"), live ? fomoBal : paperPerf.bal, money);
+    if (window.BuddySpark && perf.bal != null && heroText === money(perf.bal)) BuddySpark.tween($("#bal"), perf.bal, money);
     else $("#bal").textContent = heroText;
     const row = $("#pnlRow");
     if (live) {
-      $("#pnlUsd").textContent = "—";
-      $("#pnlPct").textContent = "—";
-      row.className = "pnl-row flat";
-      $("#pnlSub").textContent = "Real wallet · alerts only — you place trades on FOMO";
+      const usd = perf.usd;
+      const pct = perf.pct;
+      if (window.BuddySpark && usd != null) {
+        BuddySpark.tween($("#pnlUsd"), usd, signedMoney);
+        BuddySpark.tween($("#pnlPct"), pct, signedPct);
+      } else {
+        $("#pnlUsd").textContent = usd != null ? signedMoney(usd) : "—";
+        $("#pnlPct").textContent = pct != null ? signedPct(pct) : "—";
+      }
+      row.className = "pnl-row " + (usd != null ? toneOf(usd) : "flat");
+      const b = ((s.real || {}).balance) || {};
+      const bits = [];
+      if (b.usdc != null) bits.push(money(b.usdc) + " USDC");
+      if (b.sol != null) bits.push(Number(b.sol).toFixed(4) + " SOL");
+      $("#pnlSub").textContent = (bits.length ? bits.join(" + ") : "Hot wallet") + " · auto buy/sell";
     } else {
       if (window.BuddySpark) {
         BuddySpark.tween($("#pnlUsd"), paperPerf.usd, signedMoney);
@@ -1745,13 +1809,13 @@
       try { if (window.BuddySettings) BuddySettings.render(s); } catch (e) { /* settings tab is optional */ }
     }
     if (window.BuddyDash) {
-      try { BuddyDash.render(s, paperPerf, live); } catch (e) { /* dashboard is optional */ }
+      try { BuddyDash.render(s, live ? rPerf : paperPerf, live); } catch (e) { /* dashboard is optional */ }
     }
     if (window.BuddySession) {
       try { BuddySession.render(s); } catch (e) { /* desk power / sessions are optional */ }
     }
     if (window.BuddySpark) {
-      try { BuddySpark.render(s, paperPerf, live, liveEquityExtra(s, live)); } catch (e) { /* sparkline is optional */ }
+      try { BuddySpark.render(s, live ? rPerf : paperPerf, live, live ? null : liveEquityExtra(s, live)); } catch (e) { /* sparkline is optional */ }
     }
     const tsU = toUnix(s.ts);
     const updated = s.live_ts && tsU
@@ -1759,14 +1823,14 @@
       : clock(s.ts);
     const prefix = (state.fixture || isDemoPreview()) ? "Demo · " : "";
     $("#updated").textContent = prefix + (updated ? "Updated " + updated : "Updated time unknown");
-    document.title = "Buddy · " + (live ? (fomoBal == null ? "REAL" : money(fomoBal)) : signedMoney(paperPerf.usd));
+    document.title = "Buddy · " + (live ? (rPerf.bal != null ? money(rPerf.bal) : "REAL") : signedMoney(paperPerf.usd));
 
     let equity;
     let startBal = null;
     const nowTs = toUnix(s.ts) || Date.now() / 1000;
     if (live) {
-      const v = fomoBal != null ? fomoBal : 0;
-      equity = { synthetic: true, points: [{ ts: nowTs - 3600, balance: v }, { ts: nowTs, balance: v }] };
+      equity = equityOf({ equity: (s.real_equity && s.real_equity.length) ? s.real_equity : ((s.real && s.real.equity) || []) }, rPerf);
+      startBal = rPerf.known ? rPerf.start : null;
     } else {
       equity = equityOf(s, paperPerf);
       startBal = paperPerf.known ? paperPerf.start : null;
@@ -1799,7 +1863,7 @@
     $("#chartSpan").textContent = rangeTitle(rangeKey, points, equity.synthetic);
     if (equity.synthetic) {
       $("#chartCaption").textContent = live
-        ? ("Live FOMO wallet" + (fomoBal == null ? "." : " at " + money(fomoBal) + "."))
+        ? (rPerf.bal != null ? ("Hot wallet at " + money(rPerf.bal) + ".") : "No wallet history yet.")
         : ("No balance history yet. Flat line at " + money(paperPerf.bal) + ".");
     } else {
       const lo = Math.min.apply(null, points.map((p) => p.balance));
@@ -1819,12 +1883,12 @@
     const openSum = openUsd != null ? openUsd : 0;
     const freeSum = free != null ? free : paperPerf.bal - openSum;
     if (live) {
-      const holdRows = Array.isArray(s.fomo_holdings) ? s.fomo_holdings : [];
-      const holdUsd = holdRows.reduce((sum, h) => sum + (num(h && h.size_usd) || 0), 0);
+      const openN = (s.real && s.real.open) || (opensForMode(s, [], true).length) || 0;
+      const exp = num((s.real || {}).exposure_usd);
       $("#stats").innerHTML =
-        stat("Wallet", fomoBal != null ? money(fomoBal) : "—") +
-        stat("Holdings", holdRows.length ? money(holdUsd) : money(0)) +
-        stat("Desk", "Alerts only");
+        stat("Wallet", rPerf.bal != null ? money(rPerf.bal) : "—") +
+        stat("Open", exp != null ? money(exp) : String(openN)) +
+        stat("Today", rPerf.usd != null ? signedMoney(rPerf.usd) : "—");
     } else {
       $("#stats").innerHTML =
         stat("Free", money(freeSum)) + stat("Open", money(openSum)) + stat("Start", paperPerf.known ? money(paperPerf.start) : "—");
@@ -2162,7 +2226,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v51"; /* cmd-latency-v51 */
+      BuddySettings.hooks.version = "app v52"; /* real-auto-v52 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
