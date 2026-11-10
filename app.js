@@ -1063,10 +1063,15 @@
 
   function sellKeyOf(t) {
     if (!t) return "";
-    if (t.id != null && (/REAL|LIVE|WALLET/i.test(String(t.mode || t.source || "")) || t.source === "wallet")) {
-      return "real:" + t.id;
+    const realish = /REAL|LIVE|WALLET/i.test(String(t.mode || t.source || "")) || t.source === "wallet";
+    if (realish) {
+      if (t.id != null && String(t.id) !== "") return "real:" + t.id;
+      const mint = String(t.mint || t.pos_key || "").split("~")[0];
+      return mint ? "real:" + mint : "";
     }
-    return String(t.pos_key || t.mint || "");
+    const key = String(t.pos_key || t.mint || "");
+    if (!key) return "";
+    return key.indexOf("paper:") === 0 ? key : "paper:" + key;
   }
 
   function isSellingTrade(t) {
@@ -2433,7 +2438,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v64"; /* waiting-real-entry-wait-v64 */
+      BuddySettings.hooks.version = "app v68"; /* sell-now-fix-v68 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
@@ -2465,6 +2470,32 @@
       }
     };
   }
+  function askSellFrom(el) {
+    if (!el) return false;
+    const sell = el.closest ? el.closest("[data-sell]") : null;
+    if (!sell) return false;
+    openDeskConfirm({ type: "sell", mint: sell.dataset.sell, name: sell.dataset.sellName });
+    return true;
+  }
+  // Capture phase: Sell now must not be swallowed by the trade card or other hooks.
+  document.addEventListener("click", (e) => {
+    const sell = e.target && e.target.closest && e.target.closest("[data-sell]");
+    if (!sell) return;
+    e.preventDefault();
+    e.stopPropagation();
+    askSellFrom(sell);
+  }, true);
+  document.addEventListener("click", (e) => {
+    const ok = e.target && e.target.closest && e.target.closest("#modeConfirmOk");
+    if (!ok) return;
+    if (!pendingDesk) return;
+    const action = pendingDesk;
+    closeModeConfirm();
+    runDesk(action);
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
   document.querySelector("main").addEventListener("click", (e) => {
     if (e.target.closest("a")) return;
     if (window.BuddyStyles && BuddyStyles.onClick(e, state.data)) return;
@@ -2475,6 +2506,8 @@
     if (window.BuddyAdaptive && BuddyAdaptive.onClick(e, state.data)) return;
     const sell = e.target.closest("[data-sell]");
     if (sell) {
+      e.preventDefault();
+      e.stopPropagation();
       openDeskConfirm({ type: "sell", mint: sell.dataset.sell, name: sell.dataset.sellName });
       return;
     }

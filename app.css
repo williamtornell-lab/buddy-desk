@@ -591,7 +591,18 @@ header {
   white-space: nowrap;
 }
 .fomo:active { opacity: 0.75; }
+.oc-links, .row-links {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
 .sell-now, .paper-sell {
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
   color: var(--red);
   font-size: 10px;
   font-weight: 760;
@@ -1055,7 +1066,7 @@ body[data-view="empty"] .tabbar { display: none; }
 .mode-confirm {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 80;
   display: flex;
   align-items: flex-end;
   justify-content: center;
