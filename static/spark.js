@@ -66,6 +66,12 @@
     var pts = src.map(function (p) {
       return { ts: unix(p && (p.ts != null ? p.ts : p.t)), v: num(p && (p.balance != null ? p.balance : p.equity)) };
     }).filter(function (p) { return p.ts != null && p.v != null; });
+    if (live) {
+      /* Drop leading failed/zero wallet reads once a real balance exists. Never use paper points. */
+      var hasPos = pts.some(function (p) { return p.v > 0.005; }) || (perf && perf.bal != null && perf.bal > 0.005);
+      if (hasPos) pts = pts.filter(function (p) { return p.v > 0.005; });
+      start = pts.length ? pts[0].v : (perf && perf.bal != null ? perf.bal : null);
+    }
     if (since) {
       var before = null;
       pts = pts.filter(function (p) { if (p.ts < since) { before = p; return false; } return true; });
@@ -297,7 +303,9 @@
   function render(s, perf, live, extra) {
     var wrap = $("#sparkWrap");
     if (!wrap) return;
-    if (live || !perf) { wrap.hidden = true; return; }
+    if (!perf) { wrap.hidden = true; return; }
+    var sparkEl = $("#spark");
+    if (sparkEl) sparkEl.setAttribute("aria-label", live ? "Wallet equity" : "Paper equity since reset");
     wrap.hidden = false;
     var nowTs = Date.now() / 1000;
     var series = buildSeries(s, perf, extra, nowTs, live);

@@ -1792,11 +1792,8 @@
         $("#pnlPct").textContent = pct != null ? signedPct(pct) : "—";
       }
       row.className = "pnl-row " + (usd != null ? toneOf(usd) : "flat");
-      const b = ((s.real || {}).balance) || {};
-      const bits = [];
-      if (b.usdc != null) bits.push(money(b.usdc) + " USDC");
-      if (b.sol != null) bits.push(Number(b.sol).toFixed(4) + " SOL");
-      $("#pnlSub").textContent = (bits.length ? bits.join(" + ") : "Hot wallet") + " · auto buy/sell";
+      const startBit = rPerf.known ? "vs " + money(rPerf.start) + " start" : "hot wallet";
+      $("#pnlSub").textContent = "Today's P&L " + startBit;
     } else {
       if (window.BuddySpark) {
         BuddySpark.tween($("#pnlUsd"), paperPerf.usd, signedMoney);
@@ -1969,7 +1966,7 @@
     $("#positions").innerHTML = opens.length
       ? opens.map((t) => tradeButton(t, rowIndex(t), "open")).join("")
       : emptyTrades(live
-        ? { title: "No FOMO holdings over $2", body: "Wallet tokens worth $2+ will show here in REAL mode." }
+        ? { title: "No open holdings", body: "When a real buy fills it shows up here." }
         : { title: "No open positions", body: "When Buddy takes a paper entry it shows up here." });
 
     const realized = closed.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
@@ -2239,7 +2236,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v53"; /* real-runner-lock-v53 */
+      BuddySettings.hooks.version = "app v54"; /* real-home-chart-v54 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
