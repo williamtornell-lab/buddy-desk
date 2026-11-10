@@ -1814,3 +1814,18 @@ header { background: rgba(0, 0, 0, 0.92); }
 .rl-addr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;word-break:break-all}
 .rl-in{flex:1 1 auto;min-width:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 .rl-tr .set-name{font-size:13px}
+
+/* Sessions page (v50): one box per desk ON period, 2 per row on phones */
+.ss-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ss-box { border-radius: var(--radius-sm); padding: 10px 11px; border: 1px solid var(--line-strong); background: var(--card-2); min-width: 0; }
+.ss-box.up { border-color: rgba(48, 209, 88, 0.38); background: rgba(48, 209, 88, 0.08); }
+.ss-box.down { border-color: rgba(255, 69, 58, 0.38); background: rgba(255, 69, 58, 0.08); }
+.ss-box.flat { border-color: var(--line-strong); background: rgba(142, 142, 147, 0.08); }
+.ss-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 18px; }
+.ss-when { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ss-run { font-size: 10px; font-weight: 700; color: var(--purple-soft); background: var(--purple-dim); border-radius: 999px; padding: 1px 7px; flex: none; }
+.ss-pnl { display: flex; align-items: baseline; gap: 6px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.ss-pnl b { font-size: 17px; font-weight: 800; }
+.ss-pnl span { font-size: 12px; font-weight: 700; }
+.ss-box.up .ss-pnl { color: var(--green); } .ss-box.down .ss-pnl { color: var(--red); } .ss-box.flat .ss-pnl { color: var(--muted); }
+.ss-sub { margin-top: 3px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }

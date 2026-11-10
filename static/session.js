@@ -60,10 +60,54 @@
   // Home no longer shows #deskSession.
   function renderDeskSession(s) { /* removed from Home; kept as no-op */ }
 
+  function dur(sec) {
+    var n = Math.max(0, Math.floor(num(sec) || 0) / 60 | 0);
+    var h = Math.floor(n / 60), m = n % 60;
+    return h ? h + "h " + m + "m" : m + "m";
+  }
+  function dayTime(ts) {
+    var t = num(ts); if (t == null) return "";
+    var d = new Date(t * 1000);
+    var day = d.toLocaleDateString("en-GB", { timeZone: "Europe/Stockholm", weekday: "short", day: "numeric", month: "short" });
+    var tm = d.toLocaleTimeString("en-GB", { timeZone: "Europe/Stockholm", hour: "2-digit", minute: "2-digit", hour12: false });
+    return day + " · " + tm;
+  }
+  function pct(v) {
+    var n = num(v); if (n == null) return "";
+    return (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n).toFixed(1) + "%";
+  }
+
+  // Sessions page: one box per desk ON period, newest first, running one marked.
+  function renderBoxes(s, card, host) {
+    var d = s.dashboard || {};
+    var rows = d.sessions;
+    var now = Date.now() / 1000;
+    $("#sessionsTitle").textContent = "Sessions";
+    $("#sessionsMeta").textContent = rows.length ? rows.length + (rows.length === 1 ? " session" : " sessions") : "";
+    if (!rows.length) {
+      host.innerHTML = '<p class="quiet">No sessions yet. Each time the desk is on it shows up here.</p>';
+      return;
+    }
+    host.className = "ss-grid";
+    host.innerHTML = rows.map(function (r) {
+      var p = num(r.pnl_usd) || 0;
+      var tone = p > 0.004 ? "up" : p < -0.004 ? "down" : "flat";
+      var secs = r.running ? Math.max(num(r.duration_s) || 0, now - (num(r.start) || now)) : num(r.duration_s);
+      var n = num(r.trades) || 0;
+      var basis = r.pct_base === "at_risk" ? ' title="% of capital at risk"' : "";
+      return '<div class="ss-box ' + tone + (r.running ? " run" : "") + '">' +
+        '<div class="ss-top"><span class="ss-when">' + esc(dayTime(r.start)) + "</span>" +
+        (r.running ? '<span class="ss-run">Running</span>' : "") + "</div>" +
+        '<div class="ss-pnl"><b>' + esc(usd(p)) + "</b><span" + basis + ">" + esc(pct(r.pnl_pct)) + "</span></div>" +
+        '<div class="ss-sub">' + esc(dur(secs)) + " on · " + n + (n === 1 ? " trade" : " trades") + "</div></div>";
+    }).join("");
+  }
+
   function renderPast(s) {
     var card = $("#sessionsCard"), host = $("#pastSessions");
     if (!card || !host) return;
     var d = s.dashboard || {};
+    if (Array.isArray(d.sessions)) { card.hidden = false; renderBoxes(s, card, host); return; }
     var rows = Array.isArray(d.past_sessions) ? d.past_sessions : null;
     if (!rows) { card.hidden = true; return; }
     card.hidden = false;
@@ -98,7 +142,7 @@
     hooks.confirm({
       title: on ? "Turn the desk on?" : "Turn the desk off?",
       body: on ? "New PAPER buys start again in the active mode, copy and sub-bots."
-        : "Stops NEW PAPER buys. Open trades keep being managed and exited. The current Desk session is saved to Insights → Past sessions and the Desk counters start from zero. Balance, trades, chart and learning stay.",
+        : "Stops NEW PAPER buys. Open trades keep being managed and exited. The current Desk session is saved to Insights → Sessions and the Desk counters start from zero. Balance, trades, chart and learning stay.",
       ok: on ? "Turn on" : "Turn off",
       cmds: ["desk:" + (on ? "on" : "off")],
       toast: "Sent",

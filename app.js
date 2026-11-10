@@ -2145,7 +2145,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v49"; /* mqtt-cmds-v49 */
+      BuddySettings.hooks.version = "app v50"; /* sessions-v50 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
