@@ -193,7 +193,7 @@
     if (invested) {
       cost = invested;
       basis = "invested_including_fees";
-    } else if (!wallet && size != null && size > 0 && entry) {
+    } else if (size != null && size > 0 && entry) {
       cost = size;
       basis = "gross_ticket";
     }

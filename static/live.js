@@ -278,10 +278,23 @@
   }
 
   /* Overlay a live snapshot on the full state.json (pure; returns a new object). */
+  function isLiveDesk(s, snap) {
+    var m = String((snap && snap.desk_mode) || (s && (s.mode || s.mode_label)) || "").toUpperCase();
+    return m === "LIVE" || m === "REAL";
+  }
+
   function merge(s, snap) {
     if (!s || !snap || !snap.ts || (Number(s.ts) || 0) > snap.ts + 1) return s;
     var out = Object.assign({}, s);
-    ["balance", "free", "open_usd"].forEach(function (k) { if (snap[k] != null) out[k] = snap[k]; });
+    var liveMode = isLiveDesk(s, snap);
+    if (!liveMode) {
+      ["balance", "free", "open_usd"].forEach(function (k) { if (snap[k] != null) out[k] = snap[k]; });
+    }
+    if (snap.real && typeof snap.real === "object") {
+      var prev = (s && s.real && typeof s.real === "object") ? s.real : {};
+      out.real = Object.assign({}, prev, snap.real);
+      if (!snap.real.equity && prev.equity) out.real.equity = prev.equity;
+    }
     if (snap.active_mode) out.active_mode = snap.active_mode;
     if (out.modes && snap.active_mode && out.modes[snap.active_mode]) out.active_mode_profile = out.modes[snap.active_mode];
     out.ts = snap.ts;
@@ -299,6 +312,22 @@
     }
     var oldPos = Array.isArray(s.positions) ? s.positions : [];
     var isPaper = function (p) { return !/FOMO|REAL|WALLET|LIVE/i.test(String(p.mode || p.source || "PAPER")); };
+    if (liveMode) {
+      // Paper positions/trades stay off the REAL book. Real rows come from snap.real.
+      if (Array.isArray(s.activity) && Array.isArray(snap.activity)) {
+        var idsLive = {};
+        s.activity.forEach(function (a) { idsLive[a.id] = 1; });
+        var freshLive = snap.activity.filter(function (a) { return a.id != null && !idsLive[a.id]; });
+        if (freshLive.length) out.activity = freshLive.concat(s.activity).slice(0, 120);
+      }
+      if (Array.isArray(snap.pipeline)) {
+        out.pipeline = snap.pipeline;
+        if (out.dashboard && typeof out.dashboard === "object") {
+          out.dashboard = Object.assign({}, out.dashboard, { pipeline: snap.pipeline });
+        }
+      }
+      return out;
+    }
     var livePos = (snap.positions || []).map(function (sp) {
       var spId = sp.pos_key || sp.mint;
       var old = oldPos.find(function (p) { return (p.pos_key || p.mint) === spId && Number(p.opened_at) === Number(sp.opened_at); }) || {};

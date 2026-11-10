@@ -165,10 +165,13 @@
     return Math.round(s / 86400) + "d";
   }
 
-  function clock(ts) {
+  const CLOCK_TZ = "Europe/Stockholm";
+  function clock(ts, withSeconds) {
     const t = toUnix(ts);
     if (t == null) return "";
-    return new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const opt = { timeZone: CLOCK_TZ, hour: "numeric", minute: "2-digit" };
+    if (withSeconds) opt.second = "2-digit";
+    return new Date(t * 1000).toLocaleTimeString("sv-SE", opt);
   }
 
   function money(n, digits) {
@@ -221,7 +224,33 @@
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
+  function isFailedTrade(t) {
+    if (!t) return false;
+    const s = String(t.side_or_status || t.status || "").toLowerCase();
+    if (s === "failed" || s === "fail") return true;
+    return false;
+  }
+
+  function failReason(t) {
+    const e = String((t && (t.last_error || t.exit_reason)) || "").trim();
+    const m = e.match(/price impact\s*(-?[\d.]+)\s*%/i);
+    if (m) return "price impact " + Math.abs(Number(m[1])).toFixed(1) + "%";
+    return e.replace(/_/g, " ");
+  }
+
+  function srcPill(t) {
+    const m = String((t && (t.mode || t.source)) || "").toUpperCase();
+    if (/FOMO/.test(m) && !/REAL|LIVE|WALLET/.test(m) || (t && t.source === "fomo")) {
+      return '<span class="src-pill fomo">FOMO</span>';
+    }
+    if (/REAL|LIVE|WALLET/.test(m) || (t && t.source === "wallet")) {
+      return '<span class="src-pill real">REAL</span>';
+    }
+    return '<span class="src-pill paper">PAPER</span>';
+  }
+
   function sideLabel(t) {
+    if (isFailedTrade(t)) return "Buy failed";
     const s = String(t.side_or_status || "").toLowerCase();
     if (s === "open" || s === "opening" || s === "live") return "Open";
     if (s === "exiting") return "Exiting";
@@ -233,8 +262,9 @@
   }
 
   function isOpenTrade(t) {
+    if (isFailedTrade(t)) return false;
     const s = String(t.side_or_status || "").toLowerCase();
-    if (["closed", "sold", "sell", "exited", "exit"].includes(s)) return false;
+    if (["closed", "sold", "sell", "exited", "exit", "failed", "fail"].includes(s)) return false;
     if (["open", "opening", "exiting", "live"].includes(s)) return true;
     if (t.closed_at) return false;
     return true;
@@ -270,10 +300,10 @@
     const coin = coinOf(s, p.mint);
     const entry = num(p.entry != null ? p.entry : p.entry_price);
     const exit = num(p.exit != null ? p.exit : (p.exit_price != null ? p.exit_price : p.avg_exit));
-    const size = num(p.size_usd != null ? p.size_usd : p.size);
+    const size = num(p.size_usd != null ? p.size_usd : (p.size != null ? p.size : p.usd_in));
     let pnlUsd = num(p.pnl_usd != null ? p.pnl_usd : (p.realized_pnl != null ? p.realized_pnl : p.pnl));
     let pnlPct = num(p.pnl_pct);
-    const fees = num(p.fees_usd != null ? p.fees_usd : p.fees);
+    const fees = num(p.fees_usd != null ? p.fees_usd : (p.fees != null ? p.fees : p.fee_usd));
     const side = p.side_or_status || p.status || p.side || "";
     const closedAt = p.closed_at || p.closed || null;
     const open = isOpenTrade({ side_or_status: side, closed_at: closedAt });
@@ -318,7 +348,10 @@
       demo: !!(p.demo || (s && s.demo)),
       trading_mode: p.trading_mode || p.paper_mode || p.trade_mode || p.style || p.mode_name || p.strategy_mode || "",
       entry_context: p.entry_context || null,
-      strategy: p.strategy || ""
+      strategy: p.strategy || "",
+      last_error: p.last_error || "",
+      invested_usd: num(p.invested_usd != null ? p.invested_usd : p.usd_in),
+      usd_in: num(p.usd_in)
     };
   }
 
@@ -416,6 +449,7 @@
       const rows = []
         .concat(Array.isArray(r.open_trades) ? r.open_trades : [])
         .concat(Array.isArray(r.closed_trades) ? r.closed_trades : [])
+        .concat(Array.isArray(r.failed_trades) ? r.failed_trades : [])
         .concat(Array.isArray(r.trades) ? r.trades : []);
       const seen = {};
       const out = [];
@@ -944,6 +978,14 @@
   }
 
   function tradeBits(t, mode) {
+    if (isFailedTrade(t)) {
+      const bits = ["Buy failed"];
+      const why = failReason(t);
+      if (why) bits.push(why);
+      const when = rel(t.closed_at || t.opened_at);
+      if (when) bits.push(when);
+      return bits;
+    }
     const bits = [sideLabel(t)];
     if (mode === "open") return bits;
     if (t.exit_reason && !t.open) bits.push(labelize(t.exit_reason));
@@ -970,8 +1012,7 @@
     const fresh = freshLabel(m);
     const fomo = String(t.mode || t.source || "").toUpperCase();
     const realRow = /FOMO|REAL|LIVE|WALLET/.test(fomo) || t.source === "fomo" || t.source === "wallet";
-    const pill = fomo.indexOf("FOMO") >= 0 || t.source === "fomo" || t.source === "wallet"
-      ? '<span class="src-pill fomo">FOMO</span>' : "";
+    const pill = srcPill(t);
     const entry = m.entry == null ? "—" : price(m.entry);
     const nowPx = m.price == null ? "—" : price(m.price);
     const value = m.value != null ? money(m.value) : (m.walletUsd != null ? money(m.walletUsd) : "—");
@@ -989,6 +1030,9 @@
       "</span>" + gainMarkup(m) +
       "</span>" +
       '<span class="oc-grid">' + cell("Entry", entry) + cell("Now", nowPx, nowTone) + cell("Value", value) + "</span>" +
+      (m && m.samples && m.samples.length >= 2 && window.BuddyMarks && BuddyMarks.chartSvg
+        ? '<span class="oc-spark">' + BuddyMarks.chartSvg(m.samples) + "</span>"
+        : "") +
       "</button>" +
       '<span class="oc-links">' +
       (realRow || !t.mint ? "" : '<button type="button" class="paper-sell" data-sell="' + esc(t.pos_key || t.mint) + '" data-sell-name="' + esc(displayTicker(t)) + '">Sell</button>') +
@@ -998,6 +1042,7 @@
   }
 
   function pnlMarkup(t) {
+    if (isFailedTrade(t)) return '<span class="pnl-col flat muted">—</span>';
     if (t.open) return gainMarkup(liveMark(t));
     if (t.pnl_usd == null) return "";
     return '<span class="pnl-col ' + toneOf(t.pnl_usd) + '">' + esc(signedMoney(t.pnl_usd)) +
@@ -1006,18 +1051,17 @@
 
   function tradeButton(t, index, mode) {
     if (mode === "open") return openCard(t, index);
+    const failed = isFailedTrade(t);
     const bits = tradeBits(t, mode).filter((bit) => bit.indexOf("fees ") !== 0);
     const name = displayName(t);
     if (name && name !== displayTicker(t)) bits.unshift(name);
     return (
-      '<div class="trade-row">' +
-      '<button type="button" class="trade" data-trade="' + index + '">' +
+      '<div class="trade-row' + (failed ? " failed" : "") + '">' +
+      '<button type="button" class="trade' + (failed ? " failed" : "") + '" data-trade="' + index + '">' +
       coinLogoHtml(t.mint, t.symbol, t.name, null, pickImageUrl(t)) +
       "<span class=\"who\">" +
       '<span class="ticker">' + esc(displayTicker(t)) +
-      (String(t.mode || t.source || "").toUpperCase().indexOf("FOMO") >= 0 || t.source === "fomo" || t.source === "wallet"
-        ? '<span class="src-pill fomo">FOMO</span>'
-        : '<span class="src-pill paper">PAPER</span>') +
+      srcPill(t) +
       (window.BuddyStyles ? BuddyStyles.tagHtml(t, state.data) : "") +
       "</span>" +
       '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" +
@@ -1827,7 +1871,7 @@
     }
     const tsU = toUnix(s.ts);
     const updated = s.live_ts && tsU
-      ? new Date(tsU * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })
+      ? clock(tsU, true)
       : clock(s.ts);
     const prefix = (state.fixture || isDemoPreview()) ? "Demo · " : "";
     $("#updated").textContent = prefix + (updated ? "Updated " + updated : "Updated time unknown");
@@ -1969,13 +2013,14 @@
         ? { title: "No open holdings", body: "When a real buy fills it shows up here." }
         : { title: "No open positions", body: "When Buddy takes a paper entry it shows up here." });
 
-    const realized = closed.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
-    const realizedKnown = closed.some((t) => t.pnl_usd != null);
+    const filledClosed = closed.filter((t) => !isFailedTrade(t));
+    const realized = filledClosed.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
+    const realizedKnown = filledClosed.some((t) => t.pnl_usd != null);
     const realizedEl = $("#realized");
     if (realizedKnown) {
       realizedEl.hidden = false;
       realizedEl.innerHTML = "Realized <span class=\"" + toneOf(realized) + "\">" + esc(signedMoney(realized)) + "</span> across " +
-        closed.length + (closed.length === 1 ? " close" : " closes");
+        filledClosed.length + (filledClosed.length === 1 ? " close" : " closes");
     } else {
       realizedEl.hidden = true;
       realizedEl.textContent = "";
@@ -2236,7 +2281,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v55"; /* real-logger-desk-nozoom-v55 */
+      BuddySettings.hooks.version = "app v56"; /* real-trades-display-liq-v56 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
@@ -2428,23 +2473,25 @@
     }
   }
 
-  /* ---- 5s live channel + client price fallback ---- */
+  /* ---- 1s live channel + client price fallback ---- */
   function liveQuoteFrom(sp) {
     return {
       mint: sp.mint, price: sp.price, pair: sp.pair || null, dex: null,
       requestedAt: sp.price_ts, receivedAt: sp.price_ts, quoteAsOf: null, quoteClock: "unverified",
-      source: sp.price_src === "dexscreener" ? "desk_live_dexscreener" : "desk_live", cacheMaxAgeS: 30, pollS: 5, realtime: false
+      source: sp.price_src === "dexscreener" ? "desk_live_dexscreener" : "desk_live", cacheMaxAgeS: 30, pollS: 1, realtime: false
     };
   }
   function setLiveDot(status) {
     const dot = $("#liveDot");
     if (!dot) return;
-    const hasOpen = !!(state.data && Array.isArray(state.data.positions) && state.data.positions.some((p) => p.status === "open"));
+    const realOpen = !!(state.data && state.data.real && Array.isArray(state.data.real.open_trades) && state.data.real.open_trades.length);
+    const paperOpen = !!(state.data && Array.isArray(state.data.positions) && state.data.positions.some((p) => p.status === "open"));
+    const hasOpen = realOpen || paperOpen;
     dot.hidden = status === "off" || !state.data || state.fixture;
     dot.className = "live-dot " + (status === "live" ? "on" : "fb");
     dot.title = status === "live"
-      ? "Live: desk snapshot every 5s"
-      : (hasOpen ? "Live stream offline: prices polled every 5s, desk state every ~60s" : "Live stream offline: desk state every ~60s");
+      ? "Live: desk snapshot every 1s when a trade is open"
+      : (hasOpen ? "Live stream offline: prices polled every 1s, desk state every ~60s" : "Live stream offline: desk state every ~60s");
   }
   function startLive(id) {
     if (!window.BuddyLive || state.liveStarted) return;
@@ -2453,7 +2500,8 @@
       onSnap: (snap) => {
         if (!state.data || state.fixture) return;
         state.data = BuddyLive.merge(state.data, snap);
-        (snap.positions || []).forEach((sp) => {
+        const liveMarks = (snap.positions || []).concat(((snap.real && snap.real.open_trades) || []));
+        liveMarks.forEach((sp) => {
           if (!sp.price || !sp.mint) return;
           const held = state.quotes[sp.mint];
           if (held && held.receivedAt && sp.price_ts && held.receivedAt > sp.price_ts) return;
@@ -2479,11 +2527,11 @@
 
   load();
   setInterval(load, 3000);
-  // DexScreener prices for open coins: every 5s while the live stream is down, else every 30s.
+  // Prices for open coins: 1s when the live stream is down, 5s backup when it is up.
   let lastQuotePoll = 0;
   setInterval(() => {
     const live = window.BuddyLive && BuddyLive.status() === "live";
-    const every = live ? 30000 : 5000;
+    const every = live ? 5000 : 1000;
     if (Date.now() - lastQuotePoll < every) return;
     lastQuotePoll = Date.now();
     pollQuotes();
