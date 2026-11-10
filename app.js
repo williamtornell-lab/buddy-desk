@@ -2103,7 +2103,10 @@
         stat("Free", money(freeSum)) + stat("Open", money(openSum)) + stat("Start", paperPerf.known ? money(paperPerf.start) : "—");
     }
 
-    const waiting = Array.isArray(s.waiting) ? s.waiting.slice() : [];
+    const waiting = (Array.isArray(s.waiting) ? s.waiting.slice() : []).filter(function (w) {
+      const cap = Number(w && (w.marketCap != null ? w.marketCap : (w.market_cap != null ? w.market_cap : (w.mcap != null ? w.mcap : w.last_mcap))));
+      return !(Number.isFinite(cap) && cap > 0 && cap < 10000);
+    });
     waiting.sort((a, b) => {
       const ae = a && a.entry_wait ? 1 : 0;
       const be = b && b.entry_wait ? 1 : 0;
