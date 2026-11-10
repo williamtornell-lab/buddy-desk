@@ -1,0 +1,260 @@
+{
+  "bot": "Buddy \u00b7 Demo",
+  "label": "Demo",
+  "demo": true,
+  "ts": 1793977514.733887,
+  "mode": "PAPER",
+  "mode_label": "PAPER",
+  "desk_mode": "PAPER",
+  "balance": 218.4,
+  "open_usd": 72.5,
+  "free": 145.9,
+  "paper_start_stack": 200.0,
+  "pnl_usd": 18.4,
+  "pnl_pct": 9.2,
+  "fomo_balance_usd": null,
+  "fomo_holdings": [],
+  "fomo_holdings_status": {
+    "ok": true,
+    "status": "demo",
+    "count": 0
+  },
+  "mode_toast": "",
+  "mode_toast_ts": "",
+  "desk_status": {
+    "available": true,
+    "demo": true,
+    "profits_guaranteed": false,
+    "signal_target": 20,
+    "signal_target_is_quota": false,
+    "signal_target_claimed": false,
+    "qualified_signals_overnight": 0,
+    "thresholds_active": {},
+    "early_momentum": {
+      "enabled": false,
+      "custom_exits": false,
+      "quote_clock": "not in this demo file",
+      "freshness_note": "Demo sample. No exchange quote clock and no live book.",
+      "warming_mints": 0
+    },
+    "fast_move": {
+      "delivery_enabled": false,
+      "label": "POSSIBLE PUMP—UNVERIFIED is not a buy. Not shown as live in the demo."
+    },
+    "social": {
+      "live": false,
+      "status": "unavailable",
+      "note": "Social checks are not live."
+    },
+    "streaming": {
+      "connected": false,
+      "seconds_claimed": false
+    },
+    "recent_signals": [],
+    "funnel": {
+      "scan_reason_class": {"unsafe": 0, "missing": 0, "temporary": 0, "quality": 0}
+    }
+  },
+  "fomo_handle": "@demo",
+  "signup_url": "https://fomo.family/r/savipww",
+  "profile_url": "https://fomo.family",
+  "settings": {
+    "stack_usd": 200,
+    "max_open": 5,
+    "per_trade_usd": 40,
+    "stop_pct": 12,
+    "take_pct": 25,
+    "desk_mode": "PAPER"
+  },
+  "agents": [
+    {
+      "name": "scanner",
+      "ok": true,
+      "detail": "Demo \u00b7 scanning grads",
+      "ts": 1793977502.733887
+    },
+    {
+      "name": "analyst",
+      "ok": true,
+      "detail": "Demo \u00b7 ranking",
+      "ts": 1793977494.733887
+    },
+    {
+      "name": "executor",
+      "ok": true,
+      "detail": "Demo \u00b7 paper fills",
+      "ts": 1793977506.733887
+    },
+    {
+      "name": "risk",
+      "ok": true,
+      "detail": "Demo \u00b7 stops armed",
+      "ts": 1793977484.733887
+    },
+    {
+      "name": "auditor",
+      "ok": true,
+      "detail": "Demo \u00b7 books clean",
+      "ts": 1793977474.733887
+    }
+  ],
+  "positions": [
+    {
+      "symbol": "PING",
+      "name": "Ping Protocol",
+      "mint": "DemoMintPing1111111111111111111111111",
+      "size_usd": 40.0,
+      "entry": 0.00082,
+      "mark_price": 0.00105,
+      "mark_fetched_at": 1793977484.733887,
+      "quote_as_of": null,
+      "quote_clock": "unverified",
+      "mark_source": "demo_sample",
+      "mark_samples": [
+        {"ts": 1793975200.0, "price": 0.0009},
+        {"ts": 1793976400.0, "price": 0.00098},
+        {"ts": 1793977484.733887, "price": 0.00105}
+      ],
+      "mode": "PAPER",
+      "source": "paper",
+      "status": "open",
+      "opened_at": 1793973914.733887,
+      "demo": true
+    },
+    {
+      "symbol": "WAVE",
+      "name": "Wave Runner",
+      "mint": "DemoMintWave1111111111111111111111111",
+      "size_usd": 32.5,
+      "entry": 0.0041,
+      "mark_price": 0.0038,
+      "mark_fetched_at": 1793977480.0,
+      "quote_as_of": null,
+      "quote_clock": "unverified",
+      "mark_source": "demo_sample",
+      "mark_samples": [
+        {"ts": 1793976400.0, "price": 0.004},
+        {"ts": 1793977480.0, "price": 0.0038}
+      ],
+      "mode": "PAPER",
+      "source": "paper",
+      "status": "open",
+      "opened_at": 1793975714.733887,
+      "demo": true
+    }
+  ],
+  "waiting": [
+    {
+      "symbol": "SPOON",
+      "name": "Spoon Coin",
+      "mint": "DemoMintSpoon11111111111111111111111",
+      "score": 78,
+      "liq": 42000,
+      "reason": "Demo \u00b7 grad + volume",
+      "source": "grad_board",
+      "ts": 1793977424.733887
+    },
+    {
+      "symbol": "LABS",
+      "name": "Lab Rats",
+      "mint": "DemoMintLabs111111111111111111111111",
+      "score": 71,
+      "liq": 18500,
+      "reason": "Demo \u00b7 momentum",
+      "source": "migration",
+      "ts": 1793977374.733887
+    },
+    {
+      "symbol": "ODDLY",
+      "name": "Oddly Specific",
+      "mint": "DemoMintOddly1111111111111111111111",
+      "score": 66,
+      "liq": 9200,
+      "reason": "Demo \u00b7 watchlist",
+      "source": "grad_board",
+      "ts": 1793977314.733887
+    }
+  ],
+  "activity": [
+    {
+      "ts": 1793977394.733887,
+      "kind": "buy",
+      "text": "Demo \u00b7 PAPER bought PING $40",
+      "symbol": "PING"
+    },
+    {
+      "ts": 1793976914.733887,
+      "kind": "scan",
+      "text": "Demo \u00b7 queued SPOON from grad_board",
+      "symbol": "SPOON"
+    },
+    {
+      "ts": 1793976614.733887,
+      "kind": "buy",
+      "text": "Demo \u00b7 PAPER bought WAVE $32.50",
+      "symbol": "WAVE"
+    },
+    {
+      "ts": 1793976014.733887,
+      "kind": "info",
+      "text": "Demo \u00b7 night desk online \u00b7 stack $200"
+    }
+  ],
+  "trades": [
+    {
+      "ts": 1793977394.733887,
+      "side": "buy",
+      "symbol": "PING",
+      "usd": 40.0,
+      "mode": "PAPER"
+    },
+    {
+      "ts": 1793976614.733887,
+      "side": "buy",
+      "symbol": "WAVE",
+      "usd": 32.5,
+      "mode": "PAPER"
+    }
+  ],
+  "scans": [
+    {
+      "ts": 1793977454.733887,
+      "symbol": "SPOON",
+      "score": 78,
+      "source": "grad_board"
+    },
+    {
+      "ts": 1793977434.733887,
+      "symbol": "LABS",
+      "score": 71,
+      "source": "migration"
+    }
+  ],
+  "coins": [],
+  "equity": [
+    {
+      "ts": 1793955914.733887,
+      "balance": 200.0
+    },
+    {
+      "ts": 1793963114.733887,
+      "balance": 200.0
+    },
+    {
+      "ts": 1793963115.733887,
+      "balance": 218.4
+    },
+    {
+      "ts": 1793970314.733887,
+      "balance": 218.4
+    },
+    {
+      "ts": 1793970315.733887,
+      "balance": 212.2
+    },
+    {
+      "ts": 1793976914.733887,
+      "balance": 218.4
+    }
+  ]
+}

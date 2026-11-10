@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
+<meta name="theme-color" content="#000000"/>
+<meta name="color-scheme" content="dark"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Buddy"/>
+<meta name="format-detection" content="telephone=no"/>
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=17"/>
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=17"/>
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
+<link rel="manifest" href="manifest.webmanifest"/>
+<title>Buddy</title>
+<link rel="stylesheet" href="static/app.css?v=61"/>
+</head>
+<body>
+<div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
+  <div class="splash-logo" aria-hidden="true">
+    <svg viewBox="0 0 512 512" width="112" height="112" focusable="false">
+      <rect width="512" height="512" fill="#000"/>
+      <text x="256" y="318" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Display',Inter,system-ui,sans-serif" font-size="220" font-weight="800" letter-spacing="-12" fill="#8B5CF6">BD</text>
+    </svg>
+  </div>
+  <p class="splash-name">Buddy</p>
+</div>
+<div id="app" class="tone-flat">
+  <div id="demoBanner" class="demo-banner" hidden>Demo preview · sample data only</div>
+  <header>
+    <div class="brand-row">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">BD</span>
+        <span class="brand-name">Buddy</span>
+      </div>
+      <div class="mode-switch" role="group" aria-label="Desk mode">
+        <button type="button" id="modePaper" class="mode-btn on" data-mode="paper">PAPER</button>
+        <button type="button" id="modeReal" class="mode-btn real" data-mode="real">REAL</button>
+      </div>
+    </div>
+    <div class="header-meta">
+      <div class="updated-row"><span id="liveDot" class="live-dot" hidden>LIVE</span><div id="updated" class="updated">Waiting for a desk</div></div>
+      <a id="fomoAccount" class="fomo-account" href="https://fomo.family/profile/tornell?source=share_link&amp;r=savipww">
+        <span class="fomo-avatar" aria-hidden="true">F</span>
+        <span class="fomo-label">FOMO · @tornell</span>
+      </a>
+    </div>
+    <div id="ticker" class="tkbar" hidden aria-label="Coin prices"><div class="tk-track"></div></div>
+    <div id="modeBanner" class="mode-banner" hidden>REAL · auto buy/sell on the hot wallet</div>
+  </header>
+
+  <main>
+    <section id="home" class="tab on" aria-labelledby="homeTab">
+      <div class="hero">
+        <p class="kicker" id="stackLabel">Paper balance</p>
+        <p id="bal" class="bal">—</p>
+        <p id="realBalRow" class="real-bal" hidden>FOMO · <span id="realBal">—</span></p>
+        <div id="pnlRow" class="pnl-row flat">
+          <span id="pnlUsd">—</span>
+          <span class="sep" aria-hidden="true"></span>
+          <span id="pnlPct">—</span>
+          <div id="multPill" class="mult-pill flat" hidden><b id="multX">1.00x</b><span id="multWL"><i id="multW">0</i>W / <i id="multL">0</i>L</span></div>
+        </div>
+        <p id="pnlSub" class="sub">Night P&amp;L vs paper start</p>
+        <div id="sparkWrap" class="spark-wrap" hidden>
+          <div id="spark" class="spark" role="img" aria-label="Paper equity since reset"></div>
+          <div id="sparkRanges" class="spark-ranges" role="group" aria-label="Equity range">
+            <button type="button" data-spark="reset" class="on">Reset</button>
+            <button type="button" data-spark="day">1D</button>
+            <button type="button" data-spark="week">1W</button>
+            <button type="button" data-spark="month">1M</button>
+            <button type="button" data-spark="year">1Y</button>
+          </div>
+        </div>
+      </div>
+
+      <section id="presetCard" class="dash-card" aria-label="Coin filter presets">
+        <div id="presetSeg" class="preset-seg" role="group" aria-label="Coin filter presets"></div>
+      </section>
+
+      <section id="deskCard" class="dash-card" aria-labelledby="deskTitle" hidden>
+        <div class="dash-head"><h2 id="deskTitle">Desk</h2><span id="deskCounts" class="muted"></span></div>
+        <div id="deskAgents" class="dk-list"></div>
+      </section>
+
+      <section class="block" aria-labelledby="openHeading">
+        <div class="sec-head">
+          <h2 id="openHeading">Open trades</h2>
+          <span id="openCount" class="muted"></span>
+        </div>
+        <p id="openMarks" class="open-total" hidden></p>
+
+        <div id="positions" class="sheet"></div>
+        <details class="pricing-details">
+          <summary>How prices work</summary>
+          <p>Entry is the simulated paper fill, or the weighted average when a position has one. It is not a market print. Now is the public DexScreener USD price for that mint, read every 30 seconds. The response is cached about 30 seconds and has no trade time, so the exchange clock is unverified. This is not a tick stream. Gain uses the ticket as cost when the entry fee is not stored, so it is gross of that fee and is not a net profit. A missing quote stays unknown.</p>
+        </details>
+      </section>
+
+      <section id="styleCard" class="dash-card style-card" aria-labelledby="styleTitle" hidden>
+        <div class="dash-head"><h2 id="styleTitle">Trading mode</h2><span id="styleActive" class="style-active"></span></div>
+        <div id="styleSeg" class="style-seg" role="group" aria-label="Trading mode"></div>
+        <div id="styleBody" class="style-body"></div>
+        <div id="copyCard" class="copy-row" hidden>
+          <div class="cr-main">
+            <button type="button" id="copyExpand" class="cr-info" aria-expanded="false" aria-controls="copyMore">
+              <span class="cr-title">Copy top traders</span><span id="copyLine" class="cr-sub"></span>
+            </button>
+            <button type="button" id="copyToggle" class="cr-switch" role="switch" aria-checked="false" aria-label="Copy top traders"><span class="cr-knob"></span></button>
+          </div>
+          <div id="copyMore" class="cr-more" hidden>
+            <p id="copySub" class="cr-last"></p>
+            <div id="copyList" class="copy-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="loggerCard" class="dash-card" aria-labelledby="loggerTitle" hidden>
+        <div class="dash-head"><h2 id="loggerTitle">Logger</h2><span id="loggerKilled" class="down"></span></div>
+        <div id="loggerFeed" class="lg-feed"></div>
+      </section>
+
+    </section>
+
+    <section id="insights" class="tab" aria-labelledby="insightsTab">
+      <div class="sec-head page-head">
+        <h2 id="insightsTab">Insights</h2>
+      </div>
+      <section id="lessonsCard" class="dash-card lessons-card" aria-labelledby="lessonsTitle" hidden>
+        <div class="dash-head"><h2 id="lessonsTitle">Lessons</h2><span id="lessonsMeta" class="muted"></span></div>
+        <div id="lessonsBody" class="lessons-body"></div>
+      </section>
+
+      <section id="adaptiveCard" class="dash-card adaptive-card" aria-labelledby="adaptiveTitle" hidden>
+        <div class="dash-head"><h2 id="adaptiveTitle">Adaptive</h2><span id="adaptiveStatus" class="ad-pill off">No edge yet</span></div>
+        <p id="adaptiveLine" class="copy-line"></p>
+        <p id="adaptiveSub" class="copy-sub"></p>
+        <div id="adaptiveTest" class="ad-test"></div>
+        <div id="adaptiveConv" class="ad-convs" role="group" aria-label="Adaptive conviction"></div>
+        <div id="adaptiveCands" class="ad-cands"></div>
+      </section>
+
+      <section id="sessionsCard" class="dash-card sessions-card" aria-labelledby="sessionsTitle" hidden>
+        <div class="dash-head"><h2 id="sessionsTitle">Sessions</h2><span id="sessionsMeta" class="muted"></span></div>
+        <div id="pastSessions" class="ps-list"></div>
+      </section>
+
+      <section id="reasonsCard" class="dash-card" aria-labelledby="reasonsTitle" hidden>
+        <div class="dash-head"><h2 id="reasonsTitle">Why they died</h2><span class="muted">since reset</span></div>
+        <div id="killReasons" class="kr-list"></div>
+      </section>
+
+      <div id="stats" class="stats"></div>
+      <button type="button" id="health" class="health" data-goto="agents" hidden>
+        <span id="healthDot" class="dot flat" aria-hidden="true"></span>
+        <span id="healthText">Agents</span>
+      </button>
+
+      <section class="block" aria-labelledby="waitHeading">
+        <div class="sec-head">
+          <h2 id="waitHeading">Waiting</h2>
+          <span id="waitCount" class="muted"></span>
+        </div>
+        <div id="waiting" class="sheet"></div>
+      </section>
+
+      <section class="block" aria-labelledby="tradeHeading">
+        <div class="sec-head">
+          <h2 id="tradeHeading">Trades</h2>
+          <button type="button" id="seeTrades" class="textlink" data-goto="activity" hidden>See all</button>
+        </div>
+        <p id="realized" class="realized" hidden></p>
+        <div id="homeTrades" class="sheet"></div>
+      </section>
+
+      <section class="block" aria-labelledby="tapeHeading" hidden>
+        <div class="sec-head">
+          <h2 id="tapeHeading">Recent</h2>
+          <button type="button" id="seeActivity" class="textlink" data-goto="activity" hidden>All activity</button>
+        </div>
+        <div id="homeActivity" class="sheet"></div>
+      </section>
+    </section>
+
+    <section id="activity" class="tab" aria-labelledby="activityTab">
+      <div class="sec-head page-head">
+        <h2 id="activityTab">Activity</h2>
+      </div>
+      <h3 class="subhead">Trades</h3>
+      <div id="trades" class="sheet"></div>
+      <h3 class="subhead">Tape</h3>
+      <div id="activityFeed" class="sheet"></div>
+    </section>
+
+    <section id="agents" class="tab" aria-labelledby="agentsTab">
+      <div class="sec-head page-head">
+        <h2 id="agentsTab">Agents</h2>
+        <button type="button" class="restart-btn restart-all" data-restart="all">Restart all</button>
+      </div>
+      <div id="agentCards" class="agents"></div>
+      <details class="settings">
+        <summary>Settings</summary>
+        <button type="button" class="restart-btn" data-reset-paper="200">Reset paper</button>
+        <pre id="settingsBox"></pre>
+      </details>
+      <p class="foot">
+        <a id="fomoProfile" class="fomo-brand" href="https://fomo.family/profile/tornell?source=share_link&amp;r=savipww">FOMO</a>
+        · <a id="handle" class="fomo-brand" href="https://fomo.family/profile/tornell?source=share_link&amp;r=savipww">@tornell</a>
+        · <a id="signup" href="https://fomo.family/r/savipww">invite</a>
+      </p>
+    </section>
+
+    <section id="prefs" class="tab" aria-labelledby="prefsTab">
+      <div class="sec-head page-head">
+        <h2 id="prefsTab">Settings</h2>
+        <span id="prefsMode" class="set-pill">PAPER</span>
+      </div>
+      <div id="prefsBody" class="set-body"></div>
+    </section>
+
+    <section id="coin" class="tab" aria-labelledby="coinTitle">
+      <button type="button" id="backHome" class="textlink back">← Home</button>
+      <div class="coin-hero">
+        <div id="coinLogoHost" class="coin-logo-host"></div>
+        <div class="coin-ident">
+          <p id="coinSymbol" class="kicker"></p>
+          <h2 id="coinTitle">Coin</h2>
+        </div>
+      </div>
+      <div id="coinPnl" class="pnl-row flat"></div>
+      <section id="coinChartCard" class="chart-card dex-card" aria-label="Price chart">
+        <div class="dex-bar">
+          <div id="coinTf" class="chart-ranges tf" role="group" aria-label="Candle interval">
+            <button type="button" data-tf="1m">1m</button>
+            <button type="button" data-tf="5m" class="on">5m</button>
+            <button type="button" data-tf="15m">15m</button>
+            <button type="button" data-tf="1h">1h</button>
+            <button type="button" data-tf="4h">4h</button>
+            <button type="button" data-tf="1d">1d</button>
+          </div>
+          <div id="coinViewSeg" class="chart-ranges view" role="group" aria-label="Chart source">
+            <button type="button" data-cview="chart" class="on">Chart</button>
+            <button type="button" data-cview="live">DEX live</button>
+          </div>
+        </div>
+        <div id="coinChart" class="chart dx-host"></div>
+        <div id="coinDex" class="dex-embed" hidden></div>
+        <p id="coinChartNote" class="caption"></p>
+        <div id="coinTrades" class="dx-trades" hidden></div>
+      </section>
+      <dl id="coinMeta" class="meta"></dl>
+      <a id="coinFomo" class="btn" hidden>Open coin on FOMO</a>
+      <a id="coinDexLink" class="btn btn-dex" target="_blank" rel="noopener" hidden>Open on DexScreener</a>
+      <a id="coinProfile" class="profile-link" href="https://fomo.family/profile/tornell?source=share_link&amp;r=savipww">My FOMO · @tornell</a>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Sections">
+    <button type="button" data-tab="home" class="on" aria-selected="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M10 20v-6h4v6"/></svg>
+      Home
+    </button>
+    <button type="button" data-tab="insights" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V12M10 20V6M15 20v-9M20 20V9"/></svg>
+      Insights
+    </button>
+    <button type="button" data-tab="activity" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/>
+      </svg>
+      Activity
+    </button>
+    <button type="button" data-tab="agents" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="9" r="2.2"/><circle cx="17" cy="9" r="2.2"/><circle cx="12" cy="16" r="2.2"/><path d="M8.8 10.4 10.4 14M15.2 10.4 13.6 14"/></svg>
+      Agents
+    </button>
+    <button type="button" data-tab="prefs" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      Settings
+    </button>
+  </nav>
+
+  <div id="modeConfirm" class="mode-confirm" hidden>
+    <div class="mode-confirm-card" role="dialog" aria-modal="true" aria-labelledby="modeConfirmTitle">
+      <p id="modeConfirmTitle" class="mode-confirm-title">Switch mode?</p>
+      <p id="modeConfirmBody" class="mode-confirm-body"></p>
+      <div class="mode-confirm-actions">
+        <button type="button" id="modeConfirmCancel" class="mode-confirm-cancel">Cancel</button>
+        <button type="button" id="modeConfirmOk" class="mode-confirm-ok">Confirm</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
+  <div id="err" class="err" hidden></div>
+  <div id="empty" class="empty" hidden>
+    <div class="empty-icon" aria-hidden="true">BD</div>
+    <p class="empty-title">Waiting for Buddy</p>
+    <p>Open the link from Telegram. It carries your desk in the <code>#d=</code> hash.</p>
+  </div>
+</div>
+<script>
+(function () {
+  function stop(e) { e.preventDefault(); }
+  document.addEventListener("gesturestart", stop, { passive: false });
+  document.addEventListener("gesturechange", stop, { passive: false });
+})();
+</script>
+<script src="static/lwc-4.2.3.js"></script>
+<script src="static/marks.js?v=2"></script>
+<script src="static/dexchart.js?v=3"></script>
+<script src="static/styles.js?v=5"></script>
+<script src="static/spark.js?v=6"></script>
+<script src="static/dash.js?v=10"></script>
+<script src="static/live.js?v=6"></script>
+<script src="static/copy.js?v=3"></script>
+<script src="static/adaptive.js?v=1"></script>
+<script src="static/settings.js?v=11"></script>
+<script src="static/session.js?v=6"></script>
+  <script src="static/app.js?v=61"></script>
+</body>
+</html>
