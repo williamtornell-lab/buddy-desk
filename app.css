@@ -1518,6 +1518,10 @@ body.demo-mode .real-bal { display: none !important; }
 .style-tag.st-aggressive, .style-tag.st-aggressive_short_term { color: #ff6ec7; border-color: rgba(255,110,199,0.3); }
 .style-tag.st-long_term { color: #A78BFA; border-color: rgba(167,139,250,0.3); }
 .style-tag.st-passive { color: #a7f3bf; border-color: rgba(48,209,88,0.3); }
+.style-tag.st-proven { color: #fbbf24; border-color: rgba(251,191,36,0.35); }
+.style-tag.st-surge { color: #fb7185; border-color: rgba(251,113,133,0.35); }
+.style-tag.st-trending { color: #c084fc; border-color: rgba(192,132,252,0.35); }
+
 
 /* v27 · Waiting room as a compact list */
 #waiting {

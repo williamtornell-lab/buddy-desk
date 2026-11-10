@@ -330,6 +330,9 @@
       mint: p.mint || "",
       pos_key: p.pos_key || undefined,
       sub_bot: p.sub_bot || undefined,
+      proven: p.proven || undefined,
+      surge: p.surge || undefined,
+      trending: p.trending || undefined,
       name: p.name || coin.name || "",
       symbol: p.symbol || coin.symbol || "",
       side_or_status: side,
@@ -1142,6 +1145,10 @@
     const status = entryWait ? "waiting for entry" : String(w.status || "watching").toLowerCase();
     const pill = entryWait ? "waiting for entry" : (ageTxt ? ageTxt : status);
     const src = String(w.source || coin.source || "").trim();
+    const flags = [];
+    if (w.proven || coin.proven) flags.push("proven");
+    if (src === "surge" || w.surge || coin.surge) flags.push("surge");
+    if (src === "trending" || w.trending || coin.trending) flags.push("trending");
     const mint = w.mint ? esc(w.mint) : "";
     const img = pickImageUrl(w) || pickImageUrl(coin);
     return (
@@ -1149,7 +1156,7 @@
       coinLogoHtml(w.mint, w.symbol || coin.symbol, w.name || coin.name, null, img) +
       '<span class="ticker">$' + esc(String(ticker).replace(/^\$/, "")) + "</span>" +
       (bits.length ? '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" : "") +
-      (src ? '<span class="wait-src">' + esc(src) + "</span>" : "") +
+      (flags.length ? flags.map(function (f) { return '<span class="style-tag st-' + f + '">' + esc(f) + "</span>"; }).join("") : (src ? '<span class="wait-src">' + esc(src) + "</span>" : "")) +
       '<span class="wait-pill" title="' + esc(status) + '">' + esc(pill) + "</span>" +
       "</button>"
     );

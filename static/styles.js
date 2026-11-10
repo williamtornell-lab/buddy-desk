@@ -210,16 +210,30 @@
     if (v && typeof v === "object") v = v.name || v.label || "";
     return keyOf(v);
   }
+  function flagTags(t) {
+    var bits = [];
+    var ctx = t && t.entry_context;
+    if (typeof ctx === "string") { try { ctx = JSON.parse(ctx); } catch (e) { ctx = null; } }
+    ctx = ctx || {};
+    if ((t && t.proven) || ctx.proven) bits.push('<span class="style-tag st-proven">proven</span>');
+    if ((t && t.surge) || ctx.surge) bits.push('<span class="style-tag st-surge">surge</span>');
+    if ((t && t.trending) || ctx.trending) bits.push('<span class="style-tag st-trending">trending</span>');
+    return bits.join("");
+  }
   function tagHtml(t, s) {
-    if (root.BuddyCopy) { var ch = root.BuddyCopy.tagHtml(t); if (ch) return ch; }
-    var sbt = subTag(t); if (sbt) return sbt;
+    var extra = flagTags(t);
+    if (root.BuddyCopy) { var ch = root.BuddyCopy.tagHtml(t); if (ch) return ch + extra; }
+    var sbt = subTag(t); if (sbt) return sbt + extra;
     var n = tradeModeName(t);
-    if (!n || RESERVED[n]) return "";
-    var list = modesOf(s);
-    var m = null;
-    for (var i = 0; i < list.length; i++) if (list[i].name === n) m = list[i];
-    var label = m ? shortLabel(m) : n.replace(/_/g, " ");
-    return '<span class="style-tag st-' + esc(n) + '">' + esc(label) + "</span>";
+    var modeTag = "";
+    if (n && !RESERVED[n]) {
+      var list = modesOf(s);
+      var m = null;
+      for (var i = 0; i < list.length; i++) if (list[i].name === n) m = list[i];
+      var label = m ? shortLabel(m) : n.replace(/_/g, " ");
+      modeTag = '<span class="style-tag st-' + esc(n) + '">' + esc(label) + "</span>";
+    }
+    return modeTag + extra;
   }
 
   function render(s) {
