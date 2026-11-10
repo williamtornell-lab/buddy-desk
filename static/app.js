@@ -8,6 +8,7 @@
     quoteNote: ""
   };
   const restartUi = Object.create(null);
+  const sellingUi = Object.create(null);
 
   function esc(v) {
     return String(v ?? "").replace(/[&<>"']/g, (c) => ({
@@ -314,7 +315,8 @@
     const entry = num(p.entry != null ? p.entry : p.entry_price);
     const exit = num(p.exit != null ? p.exit : (p.exit_price != null ? p.exit_price : p.avg_exit));
     const size = num(p.size_usd != null ? p.size_usd : (p.size != null ? p.size : p.usd_in));
-    let pnlUsd = num(p.pnl_usd != null ? p.pnl_usd : (p.realized_pnl != null ? p.realized_pnl : p.pnl));
+    const invested = num(p.invested_usd != null ? p.invested_usd : (p.pnl_overall_usd != null ? p.usd_in : null));
+    let pnlUsd = num(p.pnl_overall_usd != null ? p.pnl_overall_usd : (p.pnl_usd != null ? p.pnl_usd : (p.realized_pnl != null ? p.realized_pnl : p.pnl)));
     let pnlPct = num(p.pnl_pct);
     const fees = num(p.fees_usd != null ? p.fees_usd : (p.fees != null ? p.fees : p.fee_usd));
     const side = p.side_or_status || p.status || p.side || "";
@@ -322,11 +324,14 @@
     const open = isOpenTrade({ side_or_status: side, closed_at: closedAt });
     if (fromPosition && open && pnlUsd == null) pnlPct = null;
     if (pnlPct == null && entry && exit) pnlPct = (exit / entry - 1) * 100;
+    const basis = (invested && size && invested > size) ? invested : (invested || size);
+    if (pnlPct == null && pnlUsd != null && basis) pnlPct = pnlUsd / basis * 100;
     if (pnlUsd == null && pnlPct != null && size != null) {
       pnlUsd = size * pnlPct / 100 - (fees || 0);
       if (size) pnlPct = pnlUsd / size * 100;
     }
     return {
+      id: p.id,
       mint: p.mint || "",
       pos_key: p.pos_key || undefined,
       sub_bot: p.sub_bot || undefined,
@@ -1056,6 +1061,33 @@
     return '<span class="pnl-col flat">—<span class="pct">No cost</span></span>';
   }
 
+  function sellKeyOf(t) {
+    if (!t) return "";
+    if (t.id != null && (/REAL|LIVE|WALLET/i.test(String(t.mode || t.source || "")) || t.source === "wallet")) {
+      return "real:" + t.id;
+    }
+    return String(t.pos_key || t.mint || "");
+  }
+
+  function isSellingTrade(t) {
+    const s = String((t && (t.side_or_status || t.status)) || "").toLowerCase();
+    if (s === "selling" || s === "exiting") return true;
+    const key = sellKeyOf(t);
+    const rec = key && sellingUi[key];
+    return !!(rec && rec.until > Date.now());
+  }
+
+  function sellNowBtn(t) {
+    if (!t || !t.mint) return "";
+    if (isBuyingTrade(t)) return "";
+    if (isSellingTrade(t)) {
+      return '<span class="oc-selling">selling…</span>';
+    }
+    const key = sellKeyOf(t);
+    if (!key) return "";
+    return '<button type="button" class="sell-now" data-sell="' + esc(key) + '" data-sell-name="' + esc(displayTicker(t)) + '">Sell now</button>';
+  }
+
   function openCard(t, index) {
     const m = liveMark(t);
     const fresh = freshLabel(m, t);
@@ -1084,7 +1116,7 @@
         : "") +
       "</button>" +
       '<span class="oc-links">' +
-      (realRow || !t.mint ? "" : '<button type="button" class="paper-sell" data-sell="' + esc(t.pos_key || t.mint) + '" data-sell-name="' + esc(displayTicker(t)) + '">Sell</button>') +
+      sellNowBtn(t) +
       dexLink(t.mint, t) + fomoLink(t.link, "FOMO", t.mint) + "</span>" +
       "</div>"
     );
@@ -1162,13 +1194,42 @@
     );
   }
 
+  function parseActivityPnl(title) {
+    const s = String(title || "");
+    let usd = null, pct = null;
+    const um = s.match(/([+\-−])\s*\$(\d+(?:\.\d+)?)/);
+    if (um) usd = (um[1] === "-" || um[1] === "−" ? -1 : 1) * Number(um[2]);
+    const pm = s.match(/([+\-−])\s*(\d+(?:\.\d+)?)\s*%/);
+    if (pm) pct = (pm[1] === "-" || pm[1] === "−" ? -1 : 1) * Number(pm[2]);
+    return { usd: usd, pct: pct };
+  }
+
+  function activityPnl(a) {
+    const kind = String((a && a.kind) || "").toLowerCase();
+    const title = String((a && a.title) || "");
+    const isTrade = kind === "sell" || /\b(sold|partial|stopped|timeout|fade|trail|rugged|manual)\b/i.test(title);
+    if (!isTrade) return "";
+    let usd = num(a.pnl_usd);
+    let pct = num(a.pnl_pct);
+    if (usd == null || pct == null) {
+      const parsed = parseActivityPnl(title);
+      if (usd == null) usd = parsed.usd;
+      if (pct == null) pct = parsed.pct;
+    }
+    if (usd == null && pct == null) return "";
+    return '<span class="pnl-col ' + toneOf(usd != null ? usd : pct) + '">' +
+      (usd != null ? esc(signedMoney(usd)) : "—") +
+      '<span class="pct">' + esc(signedPct(pct)) + "</span></span>";
+  }
+
   function activityRow(a) {
     const title = a.title || a.kind || "Activity";
     const detailBits = [];
-    if (a.detail) detailBits.push(a.detail);
+    if (a.detail && !/^real(_scalping)?$/i.test(String(a.detail))) detailBits.push(a.detail);
     const when = rel(a.ts);
     if (when) detailBits.push(when);
     const mint = a.mint ? esc(a.mint) : "";
+    const pnl = activityPnl(a);
     return (
       '<div class="feed-row">' +
       '<button type="button" class="feed-main" data-mint="' + mint + '">' +
@@ -1176,7 +1237,7 @@
       "<span class=\"who\">" +
       "<span class=\"ticker\">" + esc(title) + "</span>" +
       '<span class="meta-line">' + esc(detailBits.join(" · ")) + "</span>" +
-      "</span>" +
+      "</span>" + pnl +
       "</button>" + rowLinks(dexLink(a.mint, null) + fomoLink(a.link, "FOMO", a.mint)) +
       "</div>"
     );
@@ -1332,9 +1393,12 @@
       return;
     }
     if (action.type === "sell") {
-      title.textContent = "Sell " + (action.name || "this coin") + "?";
-      body.textContent = "Paper close at the latest price.";
-      ok.textContent = "Sell";
+      const who = action.name || "this coin";
+      title.textContent = "Sell all of " + who + " now?";
+      body.textContent = String(action.mint || "").indexOf("real:") === 0
+        ? "Market-sell the full REAL position (Jupiter, existing slippage)."
+        : "Close the full paper position at the latest price.";
+      ok.textContent = "Sell now";
     } else {
       title.textContent = "Reset paper to $200?";
       body.textContent = "Closes paper trades, saves a private backup, and clears paper history.";
@@ -1361,7 +1425,8 @@
     let acked = false;
     if (window.BuddyLive && typeof BuddyLive.sendCmdReliable === "function") {
       try {
-        const res = await BuddyLive.sendCmdReliable(body, toastMeta || {}, { timeoutMs: 5000, attempts: 4 });
+        const sellWait = String(body || "").toLowerCase().indexOf("sell:") === 0;
+        const res = await BuddyLive.sendCmdReliable(body, toastMeta || {}, { timeoutMs: sellWait ? 25000 : 5000, attempts: sellWait ? 2 : 4 });
         mqttOk = !!(res && res.ok);
         cid = res && res.cid;
         acked = !!(res && res.ok && res.ack);
@@ -1445,13 +1510,31 @@
         }
         return;
       }
-      const body = action.type === "sell" ? "close:" + action.mint : "reset:" + action.amount;
-      const ok = await postDesk(body);
+      if (action.type === "sell") {
+        const key = String(action.mint || "");
+        if (key) sellingUi[key] = { until: Date.now() + 30000 };
+        if (state.data) render();
+        const ok = await postDesk("sell:" + key, { toast: "Sold" });
+        if (!ok) {
+          delete sellingUi[key];
+          showToast("Sell failed", false);
+          if (state.data) render();
+        } else {
+          window.setTimeout(load, 800);
+        }
+        return;
+      }
+      const ok = await postDesk("reset:" + action.amount);
       if (ok) {
-        showToast(action.type === "sell" ? "Sell sent" : "Reset sent", false);
+        showToast("Reset sent", false);
         window.setTimeout(load, 1500);
       }
     } catch (err) {
+      if (action && action.type === "sell" && action.mint) {
+        delete sellingUi[action.mint];
+        showToast("Sell failed", false);
+        if (state.data) render();
+      }
       showErr("Desk command failed");
     }
   }
