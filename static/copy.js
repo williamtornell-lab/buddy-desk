@@ -58,7 +58,8 @@
     var row = $("#copyCard");
     if (!row) return;
     var c = s && s.copy;
-    if (!c || typeof c !== "object") { row.hidden = true; return; }
+    var live = !!(s && (s.real_only || String(s.mode || "").toUpperCase() === "LIVE" || String(s.mode_label || "").toUpperCase() === "REAL"));
+    if (!c || typeof c !== "object" || c.hidden || live) { row.hidden = true; return; }
     row.hidden = false;
     var on = !!c.enabled;
     if (view.pending != null && (view.pending === on || Date.now() - view.pendingAt > 90000)) view.pending = null;
@@ -94,8 +95,9 @@
   function renderLessons(s) {
     var card = $("#lessonsCard");
     if (!card) return;
+    var live = !!(s && (s.real_only || String(s.mode || "").toUpperCase() === "LIVE" || String(s.mode_label || "").toUpperCase() === "REAL"));
     var L = s && s.lessons;
-    if (!L || typeof L !== "object") { card.hidden = true; return; }
+    if (live || !L || typeof L !== "object") { card.hidden = true; return; }
     card.hidden = false;
     $("#lessonsMeta").textContent = (num(L.journal_n) || 0) + " trades reviewed";
     var html = "";

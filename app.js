@@ -1905,15 +1905,17 @@
         stat("Free", money(freeSum)) + stat("Open", money(openSum)) + stat("Start", paperPerf.known ? money(paperPerf.start) : "—");
     }
 
-    const waiting = Array.isArray(s.waiting) ? s.waiting.slice() : [];
+    const waiting = live ? [] : (Array.isArray(s.waiting) ? s.waiting.slice() : []);
     waiting.sort((a, b) => (toUnix(b.migrated_at) || 0) - (toUnix(a.migrated_at) || 0));
     const waitEl = $("#waiting");
     const waitCount = $("#waitCount");
+    const waitBlock = waitEl && waitEl.closest("section");
+    if (waitBlock) waitBlock.hidden = !!live;
     if (waitCount) waitCount.textContent = waiting.length ? String(waiting.length) : "";
     if (waitEl) {
-      waitEl.innerHTML = waiting.length
+      waitEl.innerHTML = live ? "" : (waiting.length
         ? waiting.map(waitingRow).join("")
-        : emptyTrades({ title: "Waiting room empty", body: "Fresh migrants Buddy is watching will land here." });
+        : emptyTrades({ title: "Waiting room empty", body: "Fresh migrants Buddy is watching will land here." }));
     }
 
     state.trades = tradesOf(s);
@@ -2237,7 +2239,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v52"; /* real-auto-v52 */
+      BuddySettings.hooks.version = "app v53"; /* real-runner-lock-v53 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {

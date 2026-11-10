@@ -106,6 +106,8 @@
   function renderPast(s) {
     var card = $("#sessionsCard"), host = $("#pastSessions");
     if (!card || !host) return;
+    var live = !!(s && (s.real_only || String(s.mode || "").toUpperCase() === "LIVE" || String(s.mode_label || "").toUpperCase() === "REAL"));
+    if (live) { card.hidden = true; return; }
     var d = s.dashboard || {};
     if (Array.isArray(d.sessions)) { card.hidden = false; renderBoxes(s, card, host); return; }
     var rows = Array.isArray(d.past_sessions) ? d.past_sessions : null;
