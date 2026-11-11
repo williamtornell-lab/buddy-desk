@@ -2072,7 +2072,7 @@
       equity = equityOf({ equity: (s.real_equity && s.real_equity.length) ? s.real_equity : ((s.real && s.real.equity) || []) }, rPerf);
       startBal = rPerf.known ? rPerf.start : null;
     } else {
-      equity = equityOf(s, paperPerf);
+      equity = equityOf({ equity: (s.paper_equity && s.paper_equity.length) ? s.paper_equity : (s.equity || []) }, paperPerf);
       startBal = paperPerf.known ? paperPerf.start : null;
     }
     if ($("#chart")) {
@@ -2483,7 +2483,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v72"; /* held-timer-v72 */
+      BuddySettings.hooks.version = "app v73"; /* equity-persist-v73 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {

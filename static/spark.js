@@ -1,6 +1,8 @@
 /* Buddy hero sparkline: same look, ranges and zoom in PAPER and REAL.
    PAPER: equity since the last paper reset, plus live paper marks.
-   REAL: hot-wallet USDC+SOL series only — never paper numbers. */
+   REAL: hot-wallet USDC+SOL series only — never paper numbers.
+   Desk off/on archives Insights sessions only — it must not cut this series.
+   A short incoming payload is merged with the longer cached history. */
 (function (root) {
   "use strict";
   var UP = "#30d158", DOWN = "#ff453a", FLAT = "#30d158";
@@ -54,14 +56,50 @@
     })(t0);
   }
 
+  /* Keep the longer of (incoming, last cached) so a short snapshot or desk
+     toggle cannot wipe the line. Keyed separately for REAL and PAPER. */
+  function histKey(live) { return live ? "buddy.equityHist.real" : "buddy.equityHist.paper"; }
+  function loadHist(live) {
+    try {
+      var raw = JSON.parse(localStorage.getItem(histKey(live)) || "null");
+      return Array.isArray(raw) ? raw : [];
+    } catch (e) { return []; }
+  }
+  function saveHist(live, pts) {
+    try { localStorage.setItem(histKey(live), JSON.stringify(pts.slice(-4000))); } catch (e) { /* ignore */ }
+  }
+  function mergeHist(live, pts) {
+    var hist = loadHist(live);
+    if (!hist.length && !pts.length) return pts;
+    var by = {};
+    function put(p) {
+      var ts = unix(p && (p.ts != null ? p.ts : p.t));
+      var v = num(p && (p.v != null ? p.v : (p.balance != null ? p.balance : p.equity)));
+      if (ts == null || v == null) return;
+      by[Math.round(ts)] = { ts: ts, v: v };
+    }
+    hist.forEach(put);
+    pts.forEach(put); /* incoming wins on the same second */
+    var out = Object.keys(by).map(function (k) { return by[k]; });
+    out.sort(function (a, b) { return a.ts - b.ts; });
+    saveHist(live, out);
+    return out;
+  }
+
   /* ---- series ---- */
   function buildSeries(s, perf, extra, nowTs, live) {
     var d = s.dashboard || {};
     var src = live
       ? (Array.isArray(s.real_equity) && s.real_equity.length ? s.real_equity
         : (s.real && Array.isArray(s.real.equity) && s.real.equity.length ? s.real.equity : []))
-      : (Array.isArray(s.equity) ? s.equity : []);
-    var since = live ? null : (num(d.since) || unix(s.paper_reset_at) || null);
+      : (Array.isArray(s.paper_equity) && s.paper_equity.length ? s.paper_equity
+        : (Array.isArray(s.equity) ? s.equity : []));
+    /* "Reset" is paper_reset_at only. Never desk_session_start / dashboard.session. */
+    var sessStart = num(d.session && d.session.start);
+    var resetAt = unix(s.paper_reset_at) || null;
+    var dashSince = num(d.since);
+    if (dashSince && sessStart && Math.abs(dashSince - sessStart) < 1) dashSince = null;
+    var since = live ? null : (resetAt || dashSince || null);
     var start = live ? null : (perf && perf.known ? perf.start : null);
     var pts = src.map(function (p) {
       return { ts: unix(p && (p.ts != null ? p.ts : p.t)), v: num(p && (p.balance != null ? p.balance : p.equity)) };
@@ -70,6 +108,12 @@
       /* Drop leading failed/zero wallet reads once a real balance exists. Never use paper points. */
       var hasPos = pts.some(function (p) { return p.v > 0.005; }) || (perf && perf.bal != null && perf.bal > 0.005);
       if (hasPos) pts = pts.filter(function (p) { return p.v > 0.005; });
+      start = pts.length ? pts[0].v : (perf && perf.bal != null ? perf.bal : null);
+    }
+    pts = mergeHist(live, pts);
+    if (live) {
+      var hasPos2 = pts.some(function (p) { return p.v > 0.005; }) || (perf && perf.bal != null && perf.bal > 0.005);
+      if (hasPos2) pts = pts.filter(function (p) { return p.v > 0.005; });
       start = pts.length ? pts[0].v : (perf && perf.bal != null ? perf.bal : null);
     }
     if (since) {

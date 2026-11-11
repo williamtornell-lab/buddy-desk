@@ -295,6 +295,13 @@
       out.real = Object.assign({}, prev, snap.real);
       if (!snap.real.equity && prev.equity) out.real.equity = prev.equity;
     }
+    ["equity", "real_equity", "paper_equity"].forEach(function (k) {
+      var incoming = snap[k];
+      var prevEq = s[k];
+      if (!Array.isArray(incoming) || !incoming.length) {
+        if (Array.isArray(prevEq) && prevEq.length) out[k] = prevEq;
+      }
+    });
     if (snap.active_mode) out.active_mode = snap.active_mode;
     if (out.modes && snap.active_mode && out.modes[snap.active_mode]) out.active_mode_profile = out.modes[snap.active_mode];
     out.ts = snap.ts;
