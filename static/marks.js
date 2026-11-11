@@ -149,14 +149,22 @@
     var quoteClock = "unverified";
     var pollS = POLL_S;
     if (liveQuote && liveQuote.mint === raw.mint && positive(liveQuote.price)) {
-      price = liveQuote.price;
-      receivedAt = unix(liveQuote.receivedAt);
-      requestedAt = unix(liveQuote.requestedAt);
-      pair = liveQuote.pair || null;
-      dex = liveQuote.dex || null;
-      source = liveQuote.source || "dexscreener_tokens_v1";
-      quoteAsOf = null;
-      quoteClock = "unverified";
+      var qPrice = liveQuote.price;
+      var storedMark = positive(raw.mark_price != null ? raw.mark_price : raw.mark);
+      var ref = average || original || storedMark;
+      if (ref && qPrice && Math.max(qPrice, ref) / Math.min(qPrice, ref) >= 5) {
+        qPrice = null; /* clearly the wrong pool or a stale print */
+      }
+      if (qPrice) {
+        price = qPrice;
+        receivedAt = unix(liveQuote.receivedAt);
+        requestedAt = unix(liveQuote.requestedAt);
+        pair = liveQuote.pair || null;
+        dex = liveQuote.dex || null;
+        source = liveQuote.source || "dexscreener_tokens_v1";
+        quoteAsOf = null;
+        quoteClock = "unverified";
+      }
     } else {
       var stored = positive(raw.mark_price != null ? raw.mark_price : raw.mark);
       if (stored) {
@@ -204,6 +212,10 @@
       unrealizedKind = basis === "invested_including_fees" ? "net_of_entry_fees" : "gross_entry_fee_unknown";
     }
     var pct = entry && price ? (price / entry - 1) * 100 : null;
+    if (pct != null && value != null && cost != null && cost > 0) {
+      pct = (value - cost) / cost * 100;
+    }
+    if (pct != null && pct < -99.9) pct = -99.9;
     var walletUsd = wallet && !entry && size != null && size > 0 ? size : null;
     var seen = (sessionSamples || []).slice();
     if (price != null && receivedAt != null) seen.push({ ts: receivedAt, price: price, kind: "quote" });

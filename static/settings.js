@@ -15,20 +15,25 @@
   }
   function num(v) { var n = Number(v); return Number.isFinite(n) ? n : null; }
   function money(v) { var n = num(v); return n == null ? "—" : "$" + n.toFixed(2); }
-  var LABEL = { buy_usd: "Size", tp_pct: "Take profit", stop_pct: "Stop", max_hold_min: "Max hold", max_open: "Max open" };
-  var STEP = { buy_usd: 1, tp_pct: 0.5, stop_pct: 0.5, max_hold_min: 1, max_open: 1 };
+  var LABEL = { buy_usd: "Size", tp_pct: "Take profit", stop_pct: "Stop", max_hold_min: "Max hold", max_open: "Max open",
+    tp1_pct: "Take profit", tp2_pct: "TP2", tp3_pct: "TP3", tp1_frac: "TP1 sell", tp2_frac: "TP2 sell", tp3_frac: "TP3 sell",
+    trail_start_pct: "Trail start", trail_pct: "Trail" };
+  var STEP = { buy_usd: 1, tp_pct: 0.5, stop_pct: 0.5, max_hold_min: 1, max_open: 1,
+    tp1_pct: 0.5, tp2_pct: 1, tp3_pct: 1, tp1_frac: 0.05, tp2_frac: 0.05, tp3_frac: 0.05,
+    trail_start_pct: 1, trail_pct: 1 };
   function fmt(k, v) {
     if (v == null) return "—";
     var t = Math.round(v * 100) / 100;
     if (k === "buy_usd") return "$" + t;
-    if (k === "tp_pct") return "+" + t + "%";
+    if (k === "tp_pct" || k === "tp1_pct" || k === "tp2_pct" || k === "tp3_pct" || k === "trail_start_pct" || k === "trail_pct") return "+" + t + "%";
     if (k === "stop_pct") return "−" + t + "%";
+    if (k === "tp1_frac" || k === "tp2_frac" || k === "tp3_frac") return Math.round(t * 100) + "%";
     if (k === "max_hold_min") return t >= 120 ? (Math.round(t / 6) / 10) + " h" : t + " min";
     return String(t);
   }
   function stepFor(k, base) {
     if (k === "max_hold_min" && base >= 60) return Math.max(5, Math.round(base * 0.05));
-    if (k === "tp_pct" && base >= 20) return 1;
+    if ((k === "tp_pct" || k === "tp1_pct" || k === "tp2_pct" || k === "tp3_pct") && base >= 20) return 1;
     return STEP[k] || 1;
   }
 
@@ -222,9 +227,22 @@
             return sw("sub:" + k, !!subs[k].enabled, subs[k].label, subs[k].line);
           }).join("");
       }
+      var bots = ds.bots || {};
+      ["scalping", "quick", "runner", "moonshot"].forEach(function (name) {
+        var b = bots[name];
+        if (!b || !b.values) return;
+        var vals = b.values;
+        var keys = [];
+        if (vals.tp_pct) keys.push("tp_pct");
+        else if (vals.tp1_pct) keys.push("tp1_pct");
+        if (vals.stop_pct) keys.push("stop_pct");
+        if (!keys.length) return;
+        body += '<p class="set-group">' + esc(b.label || name) + " exits</p>" +
+          keys.map(function (k) { return stepper(name, k, vals[k]); }).join("");
+      });
       var dirty = Object.keys(edits).some(function (id) { return isDirty(ds, id); });
       body += '<button type="button" class="set-btn" data-save-edits' + (dirty ? "" : " disabled") + ">Save changes</button>";
-      html += card("Bot settings", body, '<span class="muted">New trades only</span>');
+      html += card("Bot settings", body, '<span class="muted">New trades only · edits apply to the desk</span>');
     }
 
     // Notifications + learning
@@ -255,6 +273,7 @@
   function specOf(ds, id) {
     var parts = id.split(":");
     if (parts[0] === "copy") return (ds.copy || {})[parts[1]];
+    if (ds.bots && ds.bots[parts[0]] && ds.bots[parts[0]].values) return ds.bots[parts[0]].values[parts[1]] || null;
     return ds.mode && ds.mode.name === parts[0] ? (ds.mode.values || {})[parts[1]] : null;
   }
   function isDirty(ds, id) {
