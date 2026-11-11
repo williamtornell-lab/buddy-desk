@@ -1611,6 +1611,17 @@ header { background: rgba(0, 0, 0, 0.92); }
 .oc-fresh i { width: 6px; height: 6px; border-radius: 50%; background: var(--green, #30d158); box-shadow: 0 0 6px rgba(48,209,88,0.7); }
 .oc-fresh.stale { color: var(--amber); }
 .oc-fresh.stale i { background: var(--amber); box-shadow: none; }
+
+.open-card .who { display: flex; flex-direction: column; min-width: 0; }
+.oc-meta {
+  display: flex; align-items: center; gap: 8px; margin-top: 4px;
+  min-width: 0; flex-wrap: wrap;
+}
+.oc-fresh { margin-top: 0; }
+.oc-held {
+  color: var(--faint); font-size: 10.5px; font-weight: 600; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .oc-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

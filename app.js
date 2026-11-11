@@ -412,6 +412,32 @@
     return Math.round(s / 86400) + "d ago";
   }
 
+
+  function heldForText(ts, nowS) {
+    const t = toUnix(ts);
+    if (t == null) return "";
+    const now = nowS != null && Number.isFinite(nowS) ? nowS : Date.now() / 1000;
+    let s = Math.max(0, Math.floor(now - t));
+    if (s < 60) return "Held " + s + "s";
+    const m = Math.floor(s / 60);
+    const rs = s % 60;
+    if (m < 60) return "Held " + m + "m " + String(rs).padStart(2, "0") + "s";
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    if (h < 48) return "Held " + h + "h " + String(rm).padStart(2, "0") + "m";
+    const d = Math.floor(h / 24);
+    const rh = h % 24;
+    return "Held " + d + "d " + String(rh).padStart(2, "0") + "h";
+  }
+
+  function tickHeld(nowS) {
+    const now = nowS != null && Number.isFinite(nowS) ? nowS : Date.now() / 1000;
+    document.querySelectorAll(".oc-held[data-opened]").forEach((el) => {
+      const next = heldForText(el.getAttribute("data-opened"), now);
+      if (next && el.textContent !== next) el.textContent = next;
+    });
+  }
+
   function freshLabel(m, t) {
     if (t && isBuyingTrade(t) && (!m || m.price == null)) return { text: "Buying…", stale: false };
     if (!m || m.price == null) return { text: "No quote", stale: true };
@@ -1107,6 +1133,8 @@
     const nowPx = m.price == null ? "—" : price(m.price);
     const value = m.value != null ? money(m.value) : (m.walletUsd != null ? money(m.walletUsd) : "—");
     const freshTxt = String(fresh.text).replace(/^Updated\s+/, "");
+    const heldAt = toUnix(t.opened_at);
+    const heldTxt = heldAt != null ? heldForText(heldAt) : "";
     const cell = (k, v, cls) => '<span class="oc-cell"><i>' + k + '</i><b' + (cls ? ' class="' + cls + '"' : "") + ">" + esc(v) + "</b></span>";
     const nowTone = m.pct != null && Number.isFinite(m.pct) && Math.abs(m.pct) >= 0.01 ? (m.pct > 0 ? "up" : "down") : "";
     return (
@@ -1116,7 +1144,10 @@
       coinLogoHtml(t.mint, t.symbol, t.name, null, pickImageUrl(t)) +
       '<span class="who">' +
       '<span class="oc-name"><span class="oc-sym">' + esc(displayTicker(t)) + "</span>" + pill + (window.BuddyStyles ? BuddyStyles.tagHtml(t, state.data) : "") + "</span>" +
+      '<span class="oc-meta">' +
       '<span class="oc-fresh' + (fresh.stale ? " stale" : "") + '" title="' + esc(fresh.text) + '"><i aria-hidden="true"></i>' + esc(freshTxt) + "</span>" +
+      (heldTxt ? '<span class="oc-held" data-opened="' + heldAt + '">' + esc(heldTxt) + "</span>" : "") +
+      "</span>" +
       "</span>" + gainMarkup(m) +
       "</span>" +
       '<span class="oc-grid">' + cell("Entry", entry) + cell("Now", nowPx, nowTone) + cell("Value", value) + "</span>" +
@@ -2452,7 +2483,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v69"; /* real-parity-sell-v69 */
+      BuddySettings.hooks.version = "app v72"; /* held-timer-v72 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
@@ -2742,6 +2773,7 @@
   load();
   setInterval(() => {
     if (document.visibilityState === "hidden") return;
+    tickHeld();
     // When the 1s MQTT snapshot is live, skip the published-file fetch to avoid flicker
     // and overwriting fresh marks with a ~60s-old state.json. Still refetch every 15s
     // for activity / waiting-room rows the live snap does not carry.
