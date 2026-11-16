@@ -1454,6 +1454,14 @@
     box.hidden = false;
   }
 
+  function withTimeout(promise, ms, label) {
+    let t = 0;
+    const timeout = new Promise((_, rej) => {
+      t = window.setTimeout(() => rej(new Error(label || "timeout")), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => window.clearTimeout(t));
+  }
+
   async function postDesk(body, toastMeta) {
     const target = dataPath();
     if (isDemoPreview() || state.fixture || (state.data && state.data.demo)) {
@@ -1465,6 +1473,7 @@
       return false;
     }
     showToast("Sending…", false);
+    const work = (async () => {
     let cid = null;
     let mqttOk = false;
     let ntfyOk = false;
@@ -1507,6 +1516,15 @@
     }
     if (!mqttOk && !ntfyOk && !acked) throw new Error("bad status");
     return acked || mqttOk || ntfyOk;
+    })();
+    try {
+      return await withTimeout(work, 7000, "timeout");
+    } catch (err) {
+      if (String(err && err.message || err).indexOf("timeout") >= 0) {
+        showToast("No reply — try again", false);
+      }
+      throw err;
+    }
   }
 
   async function runDesk(action) {
@@ -1586,9 +1604,10 @@
   }
 
   async function requestMode(next) {
+    closeModeConfirm();
+    if (modeUiBusy) return;
     if (isDemoPreview() || state.fixture) {
       showToast("Demo preview — mode switch disabled", false);
-      closeModeConfirm();
       return;
     }
     const target = dataPath();
@@ -1621,6 +1640,7 @@
       window.setTimeout(load, 800);
     } catch (err) {
       showErr("Could not switch mode");
+      if (state.data) syncModeSwitch(effectiveMode(state.data).live ? "real" : "paper");
     } finally {
       modeUiBusy = false;
       ["modePaper", "modeReal"].forEach((id) => {
@@ -1689,6 +1709,9 @@
       b.setAttribute("aria-selected", on ? "true" : "false");
     });
     document.querySelectorAll("main .tab").forEach((s) => s.classList.toggle("on", s.id === id));
+    document.body.dataset.tab = bar;
+    if (window.BuddyDash && BuddyDash.setActive) BuddyDash.setActive(id === "home" && document.visibilityState !== "hidden");
+    if (id === "prefs") state._prefsPainted = false;
     if (id !== "coin") {
       state.coinKey = null;
       state.coinMint = null;
@@ -1696,6 +1719,11 @@
       unloadDexEmbed();
     }
     window.scrollTo(0, 0);
+    if (state.data && id !== "coin") {
+      window.requestAnimationFrame(() => {
+        try { render(); } catch (e) { /* tab already visible */ }
+      });
+    }
   }
 
   function openTrade(index) {
@@ -2045,7 +2073,16 @@
     }
     if (window.BuddyCopy) {
       try { BuddyCopy.render(s); } catch (e) { /* copy card is optional */ }
-      try { if (window.BuddySettings) { BuddySettings.render(s); if (BuddySettings.renderHomePreset) BuddySettings.renderHomePreset(s); } } catch (e) { /* settings tab is optional */ }
+    }
+    if (window.BuddySettings) {
+      try {
+        const prefsOn = !!(document.getElementById("prefs") && document.getElementById("prefs").classList.contains("on"));
+        if (BuddySettings.renderHomePreset) BuddySettings.renderHomePreset(s);
+        if (prefsOn || !state._prefsPainted) {
+          BuddySettings.render(s);
+          state._prefsPainted = true;
+        }
+      } catch (e) { /* settings tab is optional */ }
     }
     if (window.BuddyDash) {
       try { BuddyDash.render(s, live ? rPerf : paperPerf, live); } catch (e) { /* dashboard is optional */ }
@@ -2244,17 +2281,38 @@
         ? { title: "No activity yet", body: "Real buys and sells will show here with dollar and percent P&L." }
         : { title: "No activity yet", body: "Scanner finds, waits, and exits will show on the tape." });
 
-    $("#trades").innerHTML = state.trades.length
-      ? groupedTrades(state.trades, rowIndex)
+    const tradeCap = state.tradeLimit || 100;
+    const actCap = state.activityLimit || 100;
+    const tradesHtml = state.trades.length
+      ? groupedTrades(state.trades, rowIndex, tradeCap)
       : emptyTrades({
         title: "No trades yet",
         body: "Closed buys and sells land here. An empty night is a flat book, not a missing screen."
       });
-    $("#activityFeed").innerHTML = activity.length
-      ? activity.map(activityRow).join("")
+    const tradeSig = (state.trades.length) + ":" + tradeCap + ":" + (state.trades[0] && (state.trades[0].closed_at || state.trades[0].opened_at) || "") + ":" + (state.trades.length && (state.trades[state.trades.length - 1].closed_at || state.trades[state.trades.length - 1].mint) || "");
+    if (tradeSig !== state._tradeSig) {
+      state._tradeSig = tradeSig;
+      let extra = "";
+      if (state.trades.length > tradeCap) {
+        extra = '<button type="button" class="more-btn" data-more="trades">Load more (' + (state.trades.length - tradeCap) + " left)</button>";
+      }
+      $("#trades").innerHTML = tradesHtml + extra;
+    }
+    const actSlice = activity.slice(0, actCap);
+    const actHtml = activity.length
+      ? actSlice.map(activityRow).join("")
       : emptyTrades(live
         ? { title: "No activity yet", body: "Real buys and sells will show here with dollar and percent P&L." }
         : { title: "No activity yet", body: "Scanner finds, waits, and exits will show on the tape." });
+    const actSig = activity.length + ":" + actCap + ":" + (activity[0] && (activity[0].ts + "|" + activity[0].title) || "") + ":" + (activity[actSlice.length - 1] && activity[actSlice.length - 1].ts || "");
+    if (actSig !== state._actSig) {
+      state._actSig = actSig;
+      let extra = "";
+      if (activity.length > actCap) {
+        extra = '<button type="button" class="more-btn" data-more="activity">Load more (' + (activity.length - actCap) + " left)</button>";
+      }
+      $("#activityFeed").innerHTML = actHtml + extra;
+    }
 
     const agentHost = $("#agentCards");
     agentHost.innerHTML = names.length
@@ -2285,12 +2343,14 @@
     resolvePendingLogos();
   }
 
-  function groupedTrades(trades, rowIndex) {
+  function groupedTrades(trades, rowIndex, cap) {
     const closed = trades.filter((t) => !t.open);
     const open = trades.filter((t) => t.open);
+    const limit = cap || 100;
+    const shownClosed = closed.slice(0, Math.max(0, limit - open.length));
     let html = "";
-    if (closed.length) {
-      html += '<p class="group-label">Closed</p>' + closed.map((t) => tradeButton(t, rowIndex(t))).join("");
+    if (shownClosed.length) {
+      html += '<p class="group-label">Closed</p>' + shownClosed.map((t) => tradeButton(t, rowIndex(t))).join("");
     }
     if (open.length) {
       html += '<p class="group-label">Open</p>' + open.map((t) => tradeButton(t, rowIndex(t), "open")).join("");
@@ -2487,7 +2547,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v76"; /* copyban-pipeline-v76 */
+      BuddySettings.hooks.version = "app v77"; /* ticker-settings-perf-v77 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
@@ -2608,6 +2668,16 @@
           });
         }
       }
+      return;
+    }
+    const more = e.target.closest("[data-more]");
+    if (more) {
+      const kind = more.getAttribute("data-more");
+      if (kind === "activity") state.activityLimit = (state.activityLimit || 100) + 100;
+      if (kind === "trades") state.tradeLimit = (state.tradeLimit || 100) + 100;
+      state._actSig = "";
+      state._tradeSig = "";
+      if (state.data) render();
       return;
     }
     const goto = e.target.closest("[data-goto]");
@@ -2775,6 +2845,14 @@
   }
 
   load();
+  if (window.__buddyPoll) return;
+  window.__buddyPoll = 1;
+  document.addEventListener("visibilitychange", () => {
+    if (window.BuddyDash && BuddyDash.setActive) {
+      const onHome = !!(document.getElementById("home") && document.getElementById("home").classList.contains("on"));
+      BuddyDash.setActive(onHome && document.visibilityState !== "hidden");
+    }
+  });
   setInterval(() => {
     if (document.visibilityState === "hidden") return;
     tickHeld();

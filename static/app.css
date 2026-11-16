@@ -2074,25 +2074,42 @@ body:has(#app.desk-v76),
   box-shadow: none !important;
 }
 
-/* Ticker — linear RTL, ~6.5s to cross */
-#app.desk-v76 .tkbar {
+/* Ticker — linear RTL, ~6.5s to cross. Full text visible (no clip). */
+#app.desk-v76 .tkbar,
+#app.desk-v76 #ticker.tkbar,
+#app.desk-v76 #ticker {
   overflow: hidden;
   border: 0;
   border-top: 1px solid #333;
   border-bottom: 1px solid #333;
   background: #000 !important;
-  height: 36px;
+  height: 44px;
+  min-height: 44px;
+  max-height: none;
+  line-height: 20px;
+  padding: 0 0 !important;
+  margin: 0 calc(var(--pad) * -1) 0 !important; /* cancel the old -12px bottom margin that clipped the text */
   display: flex;
   align-items: center;
+  box-sizing: border-box;
   box-shadow: none !important;
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 #app.desk-v76 .tk-track {
   display: flex;
   flex-wrap: nowrap;
+  align-items: center;
   gap: 28px;
   width: max-content;
+  height: 44px;
+  line-height: 20px;
   animation: tk-scroll 6.5s linear infinite;
   will-change: transform;
+}
+#app.desk-v76 #ticker.tk-paused .tk-track,
+#app.desk-v76 .tkbar.tk-paused .tk-track {
+  animation-play-state: paused;
 }
 #app.desk-v76 .tk-item {
   display: inline-flex;
@@ -2100,6 +2117,9 @@ body:has(#app.desk-v76),
   gap: 6px;
   white-space: nowrap;
   font-size: 13px;
+  line-height: 20px;
+  height: 44px;
+  padding: 0;
   color: #fff;
   font-variant-numeric: tabular-nums;
 }
@@ -2492,4 +2512,73 @@ body:has(#app.desk-v76),
   #app.desk-v76 .tk-track,
   #app.desk-v76 .pipe-pill.snap-in,
   #app.desk-v76 .lg-row.lg-in { animation: none; }
+}
+
+
+/* ===== v77 bugfixes ===== */
+#app.desk-v76 .tab:not(.on) { display: none !important; visibility: hidden; }
+#app.desk-v76 #modeConfirm[hidden] { display: none !important; }
+#app.desk-v76 #home { contain: layout; }
+#app.desk-v76 .pipe,
+#app.desk-v76 .pipe-row {
+  overflow: hidden;
+  isolation: isolate;
+  contain: layout;
+}
+/* Uniform compact Activity / trade rows; contain any absolute children */
+#app.desk-v76 .sheet { overflow: hidden; }
+#app.desk-v76 .trade-row,
+#app.desk-v76 .feed-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 52px;
+  height: auto;
+  padding: 8px 0 !important;
+  overflow: hidden;
+  position: relative;
+  gap: 8px;
+  background: transparent !important;
+}
+#app.desk-v76 .trade,
+#app.desk-v76 .feed-main {
+  display: grid !important;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
+}
+#app.desk-v76 .trade .who,
+#app.desk-v76 .feed-main .who {
+  min-width: 0;
+  overflow: hidden;
+}
+#app.desk-v76 .trade .ticker,
+#app.desk-v76 .feed-main .ticker,
+#app.desk-v76 .meta-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+#app.desk-v76 .trade-row .ticker { white-space: nowrap; flex-wrap: nowrap !important; }
+#app.desk-v76 .coin-logo {
+  width: 32px; height: 32px; flex: 0 0 32px;
+  overflow: hidden;
+  position: relative;
+}
+#app.desk-v76 .more-btn {
+  display: block;
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px solid #333;
+  background: transparent;
+  color: #9CA3AF;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: center;
 }

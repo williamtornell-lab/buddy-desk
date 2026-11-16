@@ -188,6 +188,7 @@
   }
 
   function tickEvents() {
+    if (!homeActive) return;
     var now = Date.now();
     STAGES.forEach(function (row) {
       var slot = document.querySelector('.pipe-row[data-stage="' + row.key + '"] .pipe-events');
@@ -207,7 +208,7 @@
   }
 
   function ensureEventTimer() {
-    if (eventTimer || reduceMotion) return;
+    if (eventTimer || reduceMotion || !homeActive) return;
     eventTimer = window.setInterval(tickEvents, 180);
   }
 
@@ -491,6 +492,17 @@
     try { renderReasons(s); } catch (e5) {}
   }
 
+  var homeActive = true;
+  function setActive(on) {
+    homeActive = !!on;
+    var tk = $("#ticker");
+    if (tk) tk.classList.toggle("tk-paused", !homeActive);
+    if (!homeActive) {
+      if (eventTimer) { window.clearInterval(eventTimer); eventTimer = 0; }
+    } else {
+      ensureEventTimer();
+    }
+  }
   function quote(mint) { return quotes[mint] || null; }
-  root.BuddyDash = { render: render, quote: quote, STAGES: STAGES };
+  root.BuddyDash = { render: render, quote: quote, setActive: setActive, STAGES: STAGES };
 })(window);

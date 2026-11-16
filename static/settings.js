@@ -189,6 +189,7 @@
     var ds = s.desk_settings || {};
     var real = String(s.mode_label || s.mode || "").toUpperCase() === "REAL" || String(s.mode || "").toUpperCase() === "LIVE";
     var html = "";
+    try {
     $("#prefsMode").textContent = real ? "REAL · auto buy/sell" : "PAPER";
     $("#prefsMode").className = "set-pill" + (real ? " real" : "");
 
@@ -231,7 +232,7 @@
               return "<li><b>@" + esc(r.handle) + "</b> · " + esc(r.reason || "banned") +
                 " · " + (r.wins || 0) + "W/" + (r.trades || 0) + " " + wr +
                 " · $" + (Number(r.pnl_usd || 0).toFixed(2)) + "</li>";
-            }).join("") + "</ul><p class="set-hint">Unban with /copy unban handle. Auto-ban: 2 losses in a row, or ≥3 trades with WR under 40% or net-negative P&amp;L. Copy stays paused until you turn it on.</p>";
+            }).join("") + '</ul><p class="set-hint">Unban with /copy unban handle. Auto-ban: 2 losses in a row, or ≥3 trades with WR under 40% or net-negative P&amp;L. Copy stays paused until you turn it on.</p>';
         } else if (ct.rules) {
           body += '<p class="set-hint">' + esc(ct.rules) + (ct.paused !== false ? " Copy is paused." : "") + "</p>";
         }
@@ -274,6 +275,9 @@
     var openKeys = hooks.openKeys ? hooks.openKeys() : [];
     html += card("Paper trades", '<button type="button" class="set-btn danger" data-close-all' + (openKeys.length ? "" : " disabled") + ">Close all " + (openKeys.length || "") + " paper trades</button>");
 
+    } catch (err) {
+      html += card("Settings error", "<p class=\"set-hint\">Could not render one section. " + esc(err && err.message ? err.message : err) + "</p>");
+    }
     // Maintenance (works even when main.py is dead — external ntfy listener)
     html += card("Maintenance",
       '<p class="set-group">Self-heal</p>' +
