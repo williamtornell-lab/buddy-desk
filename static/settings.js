@@ -15,7 +15,7 @@
   }
   function num(v) { var n = Number(v); return Number.isFinite(n) ? n : null; }
   function money(v) { var n = num(v); return n == null ? "—" : "$" + n.toFixed(2); }
-  var LABEL = { buy_usd: "Size", tp_pct: "Take profit", stop_pct: "Stop", max_hold_min: "Max hold", max_open: "Max open",
+  var LABEL = { buy_usd: "PAPER buy size", tp_pct: "Take profit", stop_pct: "Stop", max_hold_min: "Max hold", max_open: "Max open",
     tp1_pct: "Take profit", tp2_pct: "TP2", tp3_pct: "TP3", tp1_frac: "TP1 sell", tp2_frac: "TP2 sell", tp3_frac: "TP3 sell",
     trail_start_pct: "Trail start", trail_pct: "Trail" };
   var STEP = { buy_usd: 1, tp_pct: 0.5, stop_pct: 0.5, max_hold_min: 1, max_open: 1,
@@ -220,7 +220,21 @@
       var cp = ds.copy || {};
       var body = '<p class="set-group">' + esc(label) + "</p>" + keys.map(function (k) { return stepper(m.name, k, m.values[k]); }).join("");
       if (cp.buy_usd || cp.max_open) {
-        body += '<p class="set-group">Copy top traders</p>' + ["buy_usd", "max_open"].filter(function (k) { return cp[k]; }).map(function (k) { return stepper("copy", k, cp[k]); }).join("");
+        body += '<p class="set-group">Copy top traders · PAPER size</p>' + ["buy_usd", "max_open"].filter(function (k) { return cp[k]; }).map(function (k) { return stepper("copy", k, cp[k]); }).join("");
+        body += '<p class="set-hint">PAPER buy size only. REAL stays $3 per trade and never uses these values.</p>';
+        var ct = ds.copy_traders || {};
+        var banned = Array.isArray(ct.banned) ? ct.banned : [];
+        if (banned.length) {
+          body += '<p class="set-group">Banned copy traders</p><ul class="set-ban-list">' +
+            banned.map(function (r) {
+              var wr = r.win_rate != null ? Math.round(Number(r.win_rate) * 100) + "%" : "—";
+              return "<li><b>@" + esc(r.handle) + "</b> · " + esc(r.reason || "banned") +
+                " · " + (r.wins || 0) + "W/" + (r.trades || 0) + " " + wr +
+                " · $" + (Number(r.pnl_usd || 0).toFixed(2)) + "</li>";
+            }).join("") + "</ul><p class="set-hint">Unban with /copy unban handle. Auto-ban: 2 losses in a row, or ≥3 trades with WR under 40% or net-negative P&amp;L. Copy stays paused until you turn it on.</p>";
+        } else if (ct.rules) {
+          body += '<p class="set-hint">' + esc(ct.rules) + (ct.paused !== false ? " Copy is paused." : "") + "</p>";
+        }
       }
       var subs = s.scalp_subs || {};
       if (m.name === "scalping" && (subs.quick || subs.runner || subs.moonshot)) {
@@ -237,11 +251,12 @@
         if (!b || !b.values) return;
         var vals = b.values;
         var keys = [];
+        if (vals.buy_usd) keys.push("buy_usd");
         if (vals.tp_pct) keys.push("tp_pct");
         else if (vals.tp1_pct) keys.push("tp1_pct");
         if (vals.stop_pct) keys.push("stop_pct");
         if (!keys.length) return;
-        body += '<p class="set-group">' + esc(b.label || name) + " exits</p>" +
+        body += '<p class="set-group">' + esc(b.label || name) + " · PAPER size & exits</p>" +
           keys.map(function (k) { return stepper(name, k, vals[k]); }).join("");
       });
       var dirty = Object.keys(edits).some(function (id) { return isDirty(ds, id); });
