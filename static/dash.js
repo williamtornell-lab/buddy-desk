@@ -226,17 +226,28 @@
     }
     if (row.key === "analyst") return fmtCount(counts.scored || 0) + " scored";
     if (row.key === "executor") {
-      /* PAPER size from settings; REAL is always $3 and never reads the paper value. */
+      /* PAPER size from desk settings; REAL is always $3 and never reads the paper value. */
+      var isReal = String(s.mode_label || s.mode || "").toUpperCase() === "REAL";
+      if (isReal) return "size $3";
       var sz = null;
       try {
-        var set = s.settings || {};
-        var mode = (set.mode && set.mode.values && set.mode.values.buy_usd) || {};
-        sz = num(mode.value);
+        var ds = s.desk_settings || s.settings || {};
+        var buy = (ds.mode && ds.mode.values && ds.mode.values.buy_usd) || {};
+        sz = num(buy.value);
       } catch (e1) {}
-      if (String(s.mode_label || s.mode || "").toUpperCase() === "REAL") sz = 3;
-      return sz != null ? ("size $" + (sz % 1 ? sz.toFixed(2) : String(sz))) : "size";
+      return sz != null ? ("size $" + (sz % 1 ? sz.toFixed(2) : String(Math.round(sz)))) : "size";
     }
     if (row.key === "risk") {
+      try {
+        var ds2 = s.desk_settings || s.settings || {};
+        var vals = (ds2.mode && ds2.mode.values) || {};
+        var stop = num(vals.stop_pct && vals.stop_pct.value);
+        var trail = num(vals.trail_start_pct && vals.trail_start_pct.value);
+        var parts = [];
+        if (stop != null) parts.push("−" + String(stop) + "%");
+        if (trail != null) parts.push("trail +" + String(trail) + "%");
+        if (parts.length) return parts.join(" · ");
+      } catch (e2) {}
       var pill = ((s.dashboard || {}).agents || {}).risk || {};
       return pill.pill || "stop · trail";
     }
@@ -255,12 +266,36 @@
     return 20;
   }
 
-  function coinsOnStage(items, row) {
-    return items.filter(function (it) {
+  function latestOn(items, row) {
+    var best = null, bestTs = -1;
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
       var k = stageKeyOf(it);
-      if (row.key === "logger") return it.stage === "skipped" || it.stage === "sold";
-      return k === row.key;
-    }).slice(0, 4);
+      var hit = (row.key === "logger")
+        ? (it.stage === "skipped" || it.stage === "sold")
+        : (k === row.key);
+      if (!hit) continue;
+      var ts = num(it.ts) || 0;
+      if (ts >= bestTs) { best = it; bestTs = ts; }
+    }
+    return best;
+  }
+
+  function pillHtml(ev, snap) {
+    if (!ev) return "";
+    var cls = "pipe-pill tone-" + (ev.tone || "info") + (snap && !reduceMotion ? " snap-in" : "");
+    return '<span class="' + cls + '">' +
+      (ev.skull ? '<span class="pipe-skull" aria-hidden="true">☠</span> ' : "") +
+      esc(ev.text) + "</span>";
+  }
+
+  function fallbackPill(row) {
+    var text = row.key === "scout" ? "Pump.fun + Raydium…"
+      : row.key === "executor" ? "nothing passed yet"
+      : row.key === "logger" ? "reason for all"
+      : "";
+    if (!text) return "";
+    return '<span class="pipe-pill tone-idle">' + esc(text) + "</span>";
   }
 
   function renderAgents(s) {
@@ -281,13 +316,57 @@
         reasons: (d.kill_reasons || []).length
       };
     }
-    var liveN = STAGES.length;
     var title = $("#deskTitle");
-    if (title) title.textContent = "Desk · " + liveN + " agents";
+    if (title) title.textContent = "Desk · " + STAGES.length + " agents";
     var cnt = $("#deskCounts");
-    if (cnt) cnt.textContent = (counts.pairs || 0) + " scanned · " + (counts.buys || 0) + " traded";
+    if (cnt) {
+      var traded = counts.buys || 0;
+      cnt.innerHTML = (counts.pairs || 0).toLocaleString("en-US") + " scanned · <b class='up'>" + traded + " traded</b>";
+    }
 
-    /* Enqueue new events when a coin first appears on a stage (follow it down). */
+    /* Build the six single-line rows once; later ticks only patch bar/count/pill. */
+    if (!host.querySelector(".pipe-row")) {
+      host.className = "pipe";
+      host.innerHTML = STAGES.map(function (row) {
+        return '<div class="pipe-row" data-stage="' + row.key + '">' +
+          '<span class="pipe-bar bar-' + row.key + '" aria-hidden="true"></span>' +
+          '<span class="pipe-icon" style="--pipe-c:' + row.color + '">' +
+            '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            (row.key === "scout" ? '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>' :
+             row.key === "filter" ? '<polygon points="3,4 21,4 14,13 14,19 10,21 10,13"/>' :
+             row.key === "analyst" ? '<path d="M12 3 4 7v6c0 5 3.5 7.5 8 9 4.5-1.5 8-4 8-9V7z"/><path d="m9 12 2 2 4-4"/>' :
+             row.key === "executor" ? '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>' :
+             row.key === "risk" ? '<path d="M4 14c3-6 5-6 8-2s5 4 8 2"/><path d="M4 18c3-4 5-4 8 0s5 2 8-2"/>' :
+             '<path d="M6 4h12v16H6z"/><path d="M9 8h6M9 12h6M9 16h4"/>') +
+            "</svg></span>" +
+          '<span class="pipe-name">' + esc(row.name) + "</span>" +
+          '<span class="pipe-events" aria-live="polite"></span>' +
+          '<span class="pipe-count c-' + row.key + '"></span>' +
+        "</div>";
+      }).join("");
+      STAGES.forEach(function (row) {
+        var it = latestOn(items, row);
+        var slot = host.querySelector('.pipe-row[data-stage="' + row.key + '"] .pipe-events');
+        if (!slot) return;
+        if (it) slot.innerHTML = pillHtml(eventText(it, row), false);
+        else slot.innerHTML = fallbackPill(row);
+      });
+      items.forEach(function (it) {
+        if (it.mint) follow[String(it.mint)] = stageKeyOf(it);
+      });
+      follow._init = 1;
+    }
+
+    STAGES.forEach(function (row) {
+      var el = host.querySelector('.pipe-row[data-stage="' + row.key + '"]');
+      if (!el) return;
+      var bar = el.querySelector(".pipe-bar");
+      if (bar) bar.style.width = barWidth(row, counts) + "%";
+      var c = el.querySelector(".pipe-count");
+      if (c) c.textContent = rowBadge(row, counts, s);
+    });
+
+    /* Follow a coin down the rows: enqueue a snap-in pill when its stage changes. */
     items.forEach(function (it) {
       var mint = String(it.mint || "");
       if (!mint) return;
@@ -295,55 +374,18 @@
       var prev = follow[mint];
       if (prev !== rowKey) {
         follow[mint] = rowKey;
+        if (!follow._init) return;
         var row = STAGES.filter(function (r) { return r.key === rowKey; })[0];
         if (row) enqueueEvent(rowKey, eventText(it, row));
-        /* Skip / death also flash on the row they died at. */
-        if (it.stage === "skipped" && prev && prev !== rowKey) {
-          var diedOn = STAGES.filter(function (r) { return r.key === prev; })[0] || row;
-          enqueueEvent((diedOn || row).key, eventText(it, diedOn || row));
+        if (it.stage === "skipped" && prev && prev !== "logger") {
+          var diedOn = STAGES.filter(function (r) { return r.key === prev; })[0];
+          if (diedOn) enqueueEvent(diedOn.key, eventText(it, diedOn));
         }
       }
     });
+    follow._init = 1;
     ensureEventTimer();
     tickEvents();
-
-    host.className = "pipe";
-    host.innerHTML = STAGES.map(function (row) {
-      var coins = coinsOnStage(items, row);
-      var badge = rowBadge(row, counts, s);
-      var bw = barWidth(row, counts);
-      var coinHtml = coins.map(function (it) {
-        var arrived = follow[it.mint] === row.key && !reduceMotion;
-        var metric = "";
-        if (it.marketCap) metric = "mcap " + mcap(it.marketCap);
-        if (row.key === "analyst" && it.score != null) metric = "score " + Math.round(Number(it.score));
-        if (row.key === "executor" && it.bot) metric = it.bot;
-        if (row.key === "risk" && it.pnl_usd != null) metric = money(it.pnl_usd);
-        if (it.stage === "skipped") metric = String(it.reason || "killed");
-        var dead = it.stage === "skipped" || it.ok === false;
-        return '<span class="pipe-coin' + (arrived ? " slide-in" : "") + (dead ? " is-kill" : "") +
-          '" data-mint="' + esc(it.mint) + '">' + logoTag(it) +
-          "<b>$" + esc(cleanSym(it.symbol)) + "</b>" +
-          (metric ? '<em>' + esc(metric) + "</em>" : "") + "</span>";
-      }).join("");
-      var tone = row.key === "filter" ? "filter" : row.key;
-      return '<div class="pipe-row" data-stage="' + row.key + '">' +
-        '<span class="pipe-bar bar-' + tone + '" style="width:' + bw + '%" aria-hidden="true"></span>' +
-        '<span class="pipe-icon" style="--pipe-c:' + row.color + '">' +
-          '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-          (row.key === "scout" ? '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>' :
-           row.key === "filter" ? '<polygon points="3,4 21,4 14,13 14,19 10,21 10,13"/>' :
-           row.key === "analyst" ? '<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>' :
-           row.key === "executor" ? '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>' :
-           row.key === "risk" ? '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>' :
-           '<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 13h5"/>') +
-          "</svg></span>" +
-        '<div class="pipe-meta"><strong>' + esc(row.name) + "</strong><span>" + esc(row.sub) + "</span></div>" +
-        '<div class="pipe-events" aria-live="polite"></div>' +
-        '<div class="pipe-coins">' + coinHtml + "</div>" +
-        '<span class="pipe-count c-' + row.key + '">' + esc(badge) + "</span>" +
-      "</div>";
-    }).join("");
   }
 
   /* ---------- logger: insert at top, 0.25s slide+fade ---------- */
@@ -405,11 +447,16 @@
         "</span></div>";
     }).join("");
     host.innerHTML = html;
+    var killed = $("#loggerKilled");
+    if (killed) {
+      var n = ((s.dashboard || {}).pipe_counts || {}).killed;
+      if (n == null) n = (s.dashboard || {}).killed;
+      killed.textContent = n ? (Number(n).toLocaleString("en-US") + " killed") : "";
+    }
   }
 
   /* ---------- why they died: bars snap to width ---------- */
   function renderReasons(s) {
-    var host = $("#killReasons") || $("#reasonsBars");
     var card = $("#reasonsCard");
     var list = (s.dashboard && s.dashboard.kill_reasons) || [];
     if (!card) return;
@@ -421,14 +468,16 @@
     if (!target) {
       target = document.createElement("div");
       target.id = "killReasons";
-      target.className = "died-bars";
       card.appendChild(target);
     }
     target.className = "died-bars kr-list";
     target.innerHTML = list.map(function (r) {
-      var w = Math.max(8, Math.round(100 * (r.count || 0) / max));
-      return '<div class="died-row"><span class="died-fill" style="width:' + w + '%"></span>' +
-        '<span class="died-label">' + esc(r.reason || "Unknown") + " · " + esc(r.count) + "</span></div>";
+      var w = Math.max(6, Math.round(100 * (r.count || 0) / max));
+      var n = Number(r.count || 0).toLocaleString("en-US");
+      return '<div class="died-row">' +
+        '<span class="died-label">' + esc(r.reason || "Unknown") + "</span>" +
+        '<span class="died-n">' + esc(n) + "</span>" +
+        '<span class="died-fill" style="width:' + w + '%"></span></div>';
     }).join("");
   }
 
