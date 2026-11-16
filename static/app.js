@@ -1407,8 +1407,10 @@
       return;
     }
     if (action.type === "scalp") {
-      const nm = action.sub === "quick" ? "Quick" : action.sub === "runner" ? "Runner" : action.sub === "moonshot" ? "Moonshot" : String(action.sub || "Sub");
-      const blurb = action.sub === "quick"
+      const nm = action.sub === "all" ? "All modes" : action.sub === "quick" ? "Quick" : action.sub === "runner" ? "Runner" : action.sub === "moonshot" ? "Moonshot" : String(action.sub || "Sub");
+      const blurb = action.sub === "all"
+        ? " turns Scalping, Quick, Runner and Moonshot on together. Each bot still uses its own entry and exit rules. REAL limits still cap size, open trades and daily loss. Whale stays off."
+        : action.sub === "quick"
         ? " takes the same entries as Scalping with its own $20 position (TP +5%, 4 min)."
         : action.sub === "runner"
         ? " takes the same entries as Scalping with its own $20 position (TP +25%, trail 8% after +12%, 20 min)."
@@ -1416,7 +1418,9 @@
         ? " takes only the strongest Scalping entries ($10, max 2): LP locked, top10 <25%, liq ≥$20k, mcap <$500k, strong buying. Exits: 50% at +200%, rest at +1000% or 30% trail, stop −30%, max 3 days."
         : " PAPER sub-bot.";
       title.textContent = (action.on ? "Turn on " : "Turn off ") + nm + "?";
-      body.textContent = action.on
+      body.textContent = action.sub === "all"
+        ? (action.on ? nm + blurb : "Stops forcing every bot on. Individual Scalping, Quick, Runner and Moonshot switches still apply. Open trades keep their exits.")
+        : action.on
         ? "PAPER only. " + nm + blurb
         : "Stops new " + nm + " entries. Open " + nm + " trades still exit by their rules.";
       ok.textContent = action.on ? "Turn on" : "Turn off";
@@ -2483,7 +2487,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v73"; /* equity-persist-v73 */
+      BuddySettings.hooks.version = "app v75"; /* all-modes-watchdog-v75 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {

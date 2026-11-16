@@ -84,6 +84,8 @@
       (num(r.open) || 0) + " open · $" + (num(r.exposure_usd) || 0).toFixed(2) + " / $" + rfmt("exposure_usd", num(lim.exposure_usd) || 0).slice(1) + " in trades</span></div></div>";
     var rsubs = s.scalp_subs || {};
     body += '<p class="set-group">Bots</p>';
+    body += sw("sub:all", !!rsubs.all_modes, "All modes on",
+      "Scalping, Quick, Runner and Moonshot can all buy, each with their own rules. REAL limits still cap size and exposure. Whale stays off.");
     ["quick", "runner", "moonshot"].forEach(function (k) {
       if (!rsubs[k]) return;
       body += sw("sub:" + k, !!rsubs[k].enabled, rsubs[k].label,
@@ -223,7 +225,9 @@
       var subs = s.scalp_subs || {};
       if (m.name === "scalping" && (subs.quick || subs.runner || subs.moonshot)) {
         body += '<p class="set-group">Scalp sub-bots</p>' +
-          ["quick", "runner", "moonshot"].filter(function (k) { return subs[k]; }).map(function (k) {
+          sw("sub:all", !!subs.all_modes, "All modes on",
+            "Scalping, Quick, Runner and Moonshot can all buy, each with their own rules. REAL limits still cap size and exposure. Whale stays off.") +
+          ["quick", "runner", "moonshot"].filter(function (k) { return subs[k] && k !== "all_modes"; }).map(function (k) {
             return sw("sub:" + k, !!subs[k].enabled, subs[k].label, subs[k].line);
           }).join("");
       }
