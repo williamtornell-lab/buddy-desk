@@ -30,7 +30,7 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 body {
-  font: 15px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, system-ui, sans-serif;
+  font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   letter-spacing: -0.011em;
 }
@@ -1874,7 +1874,12 @@ header { background: rgba(0, 0, 0, 0.92); }
 .ss-sub { margin-top: 3px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* v55 · no page zoom on iPhone / home-screen web app */
-html, body { touch-action: manipulation; }
+html, body {
+  touch-action: manipulation;
+  zoom: normal;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 input, select, textarea,
 input[type="text"], input[type="number"], input[type="search"],
 .chip-in, .rl-in { font-size: 16px !important; }
@@ -2592,4 +2597,199 @@ body:has(#app.desk-v76),
   padding: 0 !important;
   border: 0 !important;
   overflow: hidden !important;
+}
+
+/* ===== v78 readable sizing (v75 density, flat black) ===== */
+/* Base 16px, larger rows, wrap tags, no list box, DEX/FOMO on their own line. */
+#app.desk-v76 {
+  font-size: 16px;
+  line-height: 1.4;
+  zoom: normal;
+}
+
+#app.desk-v76 .sheet,
+#app.desk-v76 #activityFeed,
+#app.desk-v76 #openList,
+#app.desk-v76 #waitingList,
+#app.desk-v76 #tape {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+  background: transparent !important;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+#app.desk-v76 .trade-row,
+#app.desk-v76 .feed-row,
+#app.desk-v76 .trade-row.open-card {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: start;
+  gap: 8px;
+  min-height: 0;
+  height: auto;
+  padding: 14px 0 !important;
+  overflow: visible;
+  position: relative;
+  background: transparent !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-top: 1px solid #333;
+  box-shadow: none !important;
+}
+#app.desk-v76 .trade,
+#app.desk-v76 .feed-main,
+#app.desk-v76 .oc-main {
+  display: grid !important;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  overflow: visible;
+  width: 100%;
+}
+#app.desk-v76 .coin-logo,
+#app.desk-v76 .trade .coin-logo,
+#app.desk-v76 .feed-main .coin-logo {
+  width: 44px !important;
+  height: 44px !important;
+  flex: 0 0 44px;
+  overflow: hidden;
+  position: relative;
+}
+#app.desk-v76 .coin-logo .logo-mark { font-size: 16px; }
+
+#app.desk-v76 .trade .who,
+#app.desk-v76 .feed-main .who {
+  min-width: 0;
+  overflow: visible;
+}
+
+#app.desk-v76 .trade .ticker,
+#app.desk-v76 .feed-main .ticker,
+#app.desk-v76 .trade-row .ticker,
+#app.desk-v76 .oc-name,
+#app.desk-v76 .oc-sym {
+  display: flex;
+  flex-wrap: wrap !important;
+  align-items: center;
+  gap: 4px 6px;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  max-width: 100%;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+}
+#app.desk-v76 .oc-sym { display: inline; flex: 0 0 auto; }
+
+#app.desk-v76 .style-tag,
+#app.desk-v76 .src-pill,
+#app.desk-v76 .trade-row .src-pill,
+#app.desk-v76 .oc-name .style-tag,
+#app.desk-v76 .oc-name .src-pill {
+  flex: 0 1 auto;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  max-width: 100%;
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.25;
+  padding: 2px 7px;
+}
+
+#app.desk-v76 .meta-line,
+#app.desk-v76 .oc-meta {
+  display: block;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+#app.desk-v76 .pnl-col,
+#app.desk-v76 .trade .pnl,
+#app.desk-v76 #pnlUsd {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+#app.desk-v76 .pnl-col .pct { font-size: 12px; font-weight: 650; }
+
+/* DEX / FOMO sit on their own line, right-aligned under the P&L */
+#app.desk-v76 .row-links,
+#app.desk-v76 .oc-links {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
+  gap: 8px;
+  margin-top: 0;
+  grid-column: 1;
+  width: 100%;
+}
+#app.desk-v76 .row-links .dex,
+#app.desk-v76 .row-links .fomo,
+#app.desk-v76 .oc-links .dex,
+#app.desk-v76 .oc-links .fomo {
+  font-size: 12px;
+  font-weight: 760;
+  padding: 7px 10px;
+}
+
+/* Same row density on every tab */
+#app.desk-v76 .stat,
+#app.desk-v76 .agent,
+#app.desk-v76 .ps-list > *,
+#app.desk-v76 .ad-cands > *,
+#app.desk-v76 .set-row,
+#app.desk-v76 .copy-row,
+#app.desk-v76 .wait-card,
+#app.desk-v76 .lg-row,
+#app.desk-v76 .kr-row {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+#app.desk-v76 .agent h3,
+#app.desk-v76 .dk-name b,
+#app.desk-v76 .kr-name {
+  font-size: 17px;
+  font-weight: 800;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+}
+#app.desk-v76 .set-row,
+#app.desk-v76 .set-label,
+#app.desk-v76 .set-body label {
+  font-size: 16px;
+}
+#app.desk-v76 .set-hint,
+#app.desk-v76 .set-ban-list,
+#app.desk-v76 .agent p,
+#app.desk-v76 .muted {
+  font-size: 13px;
+}
+#app.desk-v76 .tabbar button {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  #app.desk-v76 .pipe-name { font-size: 13px; }
+  #app.desk-v76 .lg-row { font-size: 13px; }
+  #app.desk-v76 .trade .ticker,
+  #app.desk-v76 .feed-main .ticker,
+  #app.desk-v76 .oc-sym { font-size: 17px; }
 }
