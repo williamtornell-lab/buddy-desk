@@ -2582,3 +2582,14 @@ body:has(#app.desk-v76),
   font-weight: 650;
   text-align: center;
 }
+
+/* v78: ticker banner removed on every tab */
+#ticker, .tkbar, #app.desk-v76 #ticker, #app.desk-v76 .tkbar {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
+}

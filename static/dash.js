@@ -113,6 +113,8 @@
   /* ---------- ticker: linear RTL scroll, ~6.5s to cross ---------- */
   function renderTicker(s, live) {
     var host = $("#ticker");
+    if (host) { host.hidden = true; host.innerHTML = ""; }
+    return;
     if (!host) return;
     var items = [];
     var have = {};
