@@ -355,8 +355,24 @@
     return m === "LIVE" || m === "REAL";
   }
 
+  function applyPipeCounts(out, snap) {
+    var pc = snap && snap.pipe_counts;
+    if (!pc || typeof pc !== "object") return;
+    var dash = (out.dashboard && typeof out.dashboard === "object") ? Object.assign({}, out.dashboard) : {};
+    dash.pipe_counts = Object.assign({}, dash.pipe_counts || {}, pc);
+    if (pc.pairs != null) dash.scanned = pc.pairs;
+    if (pc.killed != null) dash.killed = pc.killed;
+    if (pc.buys != null) dash.traded = pc.buys;
+    if (pc.kill_pct != null) dash.kill_pct = pc.kill_pct;
+    out.dashboard = dash;
+  }
+
   function merge(s, snap) {
-    if (!s || !snap || !snap.ts || (Number(s.ts) || 0) > snap.ts + 1) return s;
+    if (!s || !snap || !snap.ts) return s;
+    var isDiff = snap.kind === "diff";
+    var prevTs = Number(s.live_ts || s.ts) || 0;
+    if (!isDiff && prevTs > snap.ts + 1) return s;
+    if (isDiff && prevTs > snap.ts) return s;
     var out = Object.assign({}, s);
     var liveMode = isLiveDesk(s, snap);
     if (!liveMode) {
@@ -402,6 +418,7 @@
           out.dashboard = Object.assign({}, out.dashboard, { pipeline: snap.pipeline });
         }
       }
+      applyPipeCounts(out, snap);
       if (Array.isArray(snap.waiting)) out.waiting = snap.waiting;
       return out;
     }
@@ -459,6 +476,7 @@
         out.dashboard = Object.assign({}, out.dashboard, { pipeline: snap.pipeline });
       }
     }
+    applyPipeCounts(out, snap);
     if (Array.isArray(snap.waiting)) out.waiting = snap.waiting;
     return out;
   }
