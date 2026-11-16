@@ -1,41 +1,47 @@
-/* Buddy dashboard v76 — video-style desk pipeline, ticker, logger, kill reasons.
-   Driven by state.pipeline (and dashboard fallbacks). Poll ~1–2s via app.js + MQTT. */
+/* Buddy dashboard v79 — live agent pipeline card matching William's ref5 video.
+   Driven by state.pipeline (and dashboard fallbacks). Hard-cut instant row updates.
+   Poll ~1s via MQTT snap + raw.githubusercontent fallback in app.js. */
 (function (root) {
   "use strict";
 
   var STAGES = [
-    { key: "scout",    name: "Scout",    sub: "pump.fun + Raydium…", color: "#3B82F6",
+    { key: "scout",    name: "Scout",    sub: "new pairs",          color: "#0A84FF",
       sources: { scanned: 1, watching: 1, scanner: 1 } },
-    { key: "filter",   name: "Filter",   sub: "rug / gates",         color: "#F59E0B",
+    { key: "filter",   name: "Filter",   sub: "kills 98%",          color: "#FF9F0A",
       sources: { passed_rug: 1, auditor: 1 } },
-    { key: "analyst",  name: "Analyst",  sub: "scores",              color: "#8B5CF6",
+    { key: "analyst",  name: "Analyst",  sub: "scores survivors",   color: "#BF5AF2",
       sources: { passed_gates: 1, analyst: 1, picked: 1 } },
-    { key: "executor", name: "Executor", sub: "size",                color: "#10B981",
+    { key: "executor", name: "Executor", sub: "buy fills",          color: "#32D74B",
       sources: { bought: 1, executor: 1 } },
-    { key: "risk",     name: "Risk",     sub: "stop / trail",        color: "#EC4899",
-      sources: { sold: 1, risk: 1 } },
-    { key: "logger",   name: "Logger",   sub: "feed",                color: "#06B6D4",
-      sources: { skipped: 1, logger: 1 } }
+    { key: "risk",     name: "Risk",     sub: "stop · trail",       color: "#FF375F",
+      sources: { risk: 1 } },
+    { key: "logger",   name: "Logger",   sub: "reason for all",     color: "#64D2FF",
+      sources: { skipped: 1, logger: 1, sold: 1 } }
   ];
   var STAGE_OF = {};
   STAGES.forEach(function (s) {
     Object.keys(s.sources).forEach(function (k) { STAGE_OF[k] = s.key; });
   });
-  /* A coin that is still in flight sits on the furthest stage it has reached. */
-  var ADVANCE = ["scout", "filter", "analyst", "executor", "risk"];
 
   var reduceMotion = false;
   try { reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e0) {}
 
   var logSeen = {};
-  var follow = {}; /* mint -> last stage key */
-  var eventQ = {}; /* stageKey -> [{html, tone, hold}] */
-  var eventHoldUntil = {};
-  var eventTimer = 0;
   var tickerSig = "";
   var quotes = {};
+  var rowSig = {};
+
+  var ICONS = {
+    scout: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
+    filter: '<polygon points="3,4 21,4 14,13 14,19 10,21 10,13"/>',
+    analyst: '<path d="M12 3 4 7v6c0 5 3.5 7.5 8 9 4.5-1.5 8-4 8-9V7z"/><path d="m9 12 2 2 4-4"/>',
+    executor: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+    risk: '<path d="M12 21s8-4.2 8-10V6l-8-3-8 3v5c0 5.8 8 10 8 10z"/>',
+    logger: '<path d="M6 4h12v16H6z"/><path d="M9 8h6M9 12h6M9 16h4"/>'
+  };
 
   function $(s) { return document.querySelector(s); }
+  function $all(s) { return Array.prototype.slice.call(document.querySelectorAll(s)); }
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -55,12 +61,13 @@
   }
   function pct(v) {
     var n = num(v); if (n == null) return "";
-    return (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n).toFixed(Math.abs(n) >= 100 ? 0 : 1) + "%";
+    var abs = Math.abs(n);
+    return (n > 0 ? "+" : n < 0 ? "−" : "") + abs.toFixed(abs >= 100 ? 0 : (abs >= 10 ? 0 : 0)) + "%";
   }
   function money(v) {
     var n = num(v); if (n == null) return "—";
     var sign = n < 0 ? "−" : n > 0 ? "+" : "";
-    return sign + "$" + Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return sign + "$" + Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   }
   function mcap(v) {
     var n = num(v); if (n == null) return "";
@@ -68,13 +75,14 @@
     if (n >= 1000) return "$" + (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k";
     return "$" + Math.round(n);
   }
-  function logoTag(item) {
-    var letter = (cleanSym(item.symbol || item.name) || "?").charAt(0);
-    var src = item.logo || "";
+  function logoTag(item, cls) {
+    var letter = (cleanSym((item && (item.symbol || item.name)) || "?") || "?").charAt(0);
+    var src = (item && item.logo) || "";
+    var extra = cls ? " " + cls : "";
     if (src) {
-      return '<span class="pipe-logo"><img src="' + esc(src) + '" alt="" onerror="this.parentNode.classList.add(\'no-img\');this.remove()"/><i>' + esc(letter) + "</i></span>";
+      return '<span class="pipe-logo' + extra + '"><img src="' + esc(src) + '" alt="" onerror="this.parentNode.classList.add(\'no-img\');this.remove()"/><i>' + esc(letter) + "</i></span>";
     }
-    return '<span class="pipe-logo no-img"><i>' + esc(letter) + "</i></span>";
+    return '<span class="pipe-logo no-img' + extra + '"><i>' + esc(letter) + "</i></span>";
   }
 
   function pipelineOf(s) {
@@ -85,8 +93,37 @@
 
   function stageKeyOf(item) {
     var st = String(item && item.stage || "");
+    if (st === "sold") return "executor";
+    if (st === "skipped") return killRowOf(item);
     if (STAGE_OF[st]) return STAGE_OF[st];
     return "scout";
+  }
+
+  function killRowOf(item) {
+    var why = String((item && item.reason) || "");
+    var stages = (item && item.stages) || {};
+    if (stages.bought || stages.sold) return "executor";
+    if (stages.passed_gates || stages.picked || stages.analyst) return "analyst";
+    if (stages.passed_rug || stages.auditor) {
+      return /score|share|too weak|quality|already up|pool age/i.test(why) ? "analyst" : "filter";
+    }
+    if (/liq|lp\b|rug|mint|freeze|unlock|holder|top\s*10|market cap|mcap|bundled|snipe|liquidity/i.test(why)) return "filter";
+    if (/score|share|too weak|quality|gate|already up|pool age|entry/i.test(why)) return "analyst";
+    return "filter";
+  }
+
+  function isKill(item) {
+    var why = String((item && item.reason) || "");
+    if (/liq|lp\b|rug|mint|freeze|unlock|holder|top\s*10|market cap|mcap|bundled|snipe|liquidity|score|too weak|quality/i.test(why)) return true;
+    if (/already up|pool age|cooldown|repeat|banned/i.test(why)) return false;
+    return !!(item && item.ok === false);
+  }
+
+  function fmtScore(v) {
+    var n = num(v);
+    if (n == null) return "";
+    if (Math.abs(n) <= 1.5) return n.toFixed(2);
+    return String(Math.round(n));
   }
 
   /* ---------- equity: snap numbers, no roll ---------- */
@@ -110,114 +147,83 @@
     if (sub) sub.textContent = d.since_reset ? "since reset" : (sub.textContent || "");
   }
 
-  /* ---------- ticker: linear RTL scroll, ~6.5s to cross ---------- */
+  /* ---------- ticker removed in v78; keep the hook ---------- */
   function renderTicker(s, live) {
     var host = $("#ticker");
     if (host) { host.hidden = true; host.innerHTML = ""; }
     return;
-    if (!host) return;
-    var items = [];
-    var have = {};
-    function add(sym, px, chg, mint) {
-      sym = cleanSym(sym);
-      if (!sym || have[sym]) return;
-      have[sym] = 1;
-      items.push({ symbol: sym, px: px, chg: chg, mint: mint || "" });
-      if (mint && px != null) quotes[mint] = { price: px, chg: chg };
-    }
-    pipelineOf(s).forEach(function (e) { add(e.symbol, e.priceUsd || e.price, e.chg || e.changePct, e.mint); });
-    (s.positions || []).forEach(function (p) { add(p.symbol, p.price || p.mark || p.now, p.pnl_pct, p.mint); });
-    var dash = (s.dashboard && s.dashboard.ticker) || [];
-    dash.forEach(function (t) { add(t.symbol, t.price, t.chg || t.change, t.mint); });
-    if (live && Array.isArray(live.positions)) {
-      live.positions.forEach(function (p) { add(p.symbol, p.price || p.mark, p.chg, p.mint); });
-    }
-    if (!items.length) { host.hidden = true; return; }
-    host.hidden = false;
-    host.setAttribute("aria-label", "Coin prices");
-    var sig = items.map(function (x) { return x.symbol + (x.px || "") + (x.chg || ""); }).join("|");
-    if (sig === tickerSig && host.querySelector(".tk-track")) return;
-    tickerSig = sig;
-    var html = items.map(function (x) {
-      var ch = num(x.chg);
-      var cls = ch == null ? "" : ch >= 0 ? "up" : "down";
-      return '<span class="tk-item"><i class="tk-dot" aria-hidden="true"></i><b>$' +
-        esc(x.symbol) + "</b> <em>" + esc(fmtPx(x.px) || "—") + '</em> <span class="' + cls + '">' +
-        (ch == null ? "" : pct(ch)) + "</span></span>";
-    }).join("");
-    /* Duplicate the strip so a -50% translate loops seamlessly. */
-    host.innerHTML = '<div class="tk-track">' + html + html + "</div>";
-  }
-
-  /* ---------- event pill text ---------- */
-  function eventText(item, row) {
-    var sym = "$" + cleanSym(item.symbol || item.name || "");
-    var key = row.key;
-    if (item.stage === "skipped" || item.ok === false) {
-      var why = String(item.reason || "killed");
-      if (key === "filter" || /liq|lp |rug|mint|freeze|unlock/i.test(why)) {
-        return { text: sym + " · " + why, tone: "kill", skull: true };
-      }
-      return { text: sym + " · " + why, tone: "kill", skull: false };
-    }
-    if (key === "scout") return { text: sym + " new pair", tone: "info" };
-    if (key === "filter") return { text: sym + " passed rug", tone: "pass" };
-    if (key === "analyst") {
-      var sc = num(item.score);
-      return { text: "scored " + sym + (sc != null ? " " + Math.round(sc) : ""), tone: "info" };
-    }
-    if (key === "executor") {
-      return { text: "bought " + sym + (item.size ? " " + money(item.size).replace("+", "") : ""), tone: "buy" };
-    }
-    if (key === "risk") {
-      var pnl = num(item.pnl_usd);
-      if (item.stage === "sold" || pnl != null) {
-        var r = String(item.reason || "sold");
-        var tone = pnl != null && pnl >= 0 ? "pass" : "kill";
-        return { text: "sold " + sym + " " + r + (pnl != null ? " " + money(pnl) : ""), tone: tone };
-      }
-      return { text: "stop set " + sym, tone: "idle" };
-    }
-    return { text: sym, tone: "info" };
-  }
-
-  function enqueueEvent(rowKey, ev) {
-    if (!eventQ[rowKey]) eventQ[rowKey] = [];
-    var q = eventQ[rowKey];
-    if (q.length && q[q.length - 1].text === ev.text) return;
-    q.push(ev);
-    if (q.length > 8) q.shift();
-  }
-
-  function tickEvents() {
-    if (!homeActive) return;
-    var now = Date.now();
-    STAGES.forEach(function (row) {
-      var slot = document.querySelector('.pipe-row[data-stage="' + row.key + '"] .pipe-events');
-      if (!slot) return;
-      if (eventHoldUntil[row.key] && now < eventHoldUntil[row.key]) return;
-      var q = eventQ[row.key] || [];
-      if (!q.length) return;
-      var ev = q.shift();
-      eventQ[row.key] = q;
-      var hold = 300 + Math.min(700, 80 * String(ev.text || "").length);
-      eventHoldUntil[row.key] = now + hold;
-      var cls = "pipe-pill tone-" + (ev.tone || "info") + (reduceMotion ? "" : " snap-in");
-      slot.innerHTML = '<span class="' + cls + '">' +
-        (ev.skull ? '<span class="pipe-skull" aria-hidden="true">☠</span> ' : "") +
-        esc(ev.text) + "</span>";
-    });
-  }
-
-  function ensureEventTimer() {
-    if (eventTimer || reduceMotion || !homeActive) return;
-    eventTimer = window.setInterval(tickEvents, 180);
   }
 
   function fmtCount(n) {
     n = Math.round(Number(n) || 0);
-    if (n >= 10000) return (n / 1000).toFixed(n >= 100000 ? 0 : 1) + "k";
+    if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? (n >= 100000 ? 0 : 1) : 1) + "k";
     return n.toLocaleString("en-US");
+  }
+
+  function deriveCounts(s, items) {
+    var d = s.dashboard || {};
+    var c = d.pipe_counts || {};
+    var scanned = num(c.pairs);
+    if (scanned == null) scanned = num(d.scanned);
+    if (scanned == null) scanned = items.length || 0;
+    var killed = num(c.killed);
+    if (killed == null) killed = num(d.killed);
+    if (killed == null) {
+      killed = items.filter(function (it) { return it.stage === "skipped" || it.ok === false; }).length;
+    }
+    var scored = num(c.scored);
+    if (scored == null) scored = num(((d.agents || {}).analyst || {}).count);
+    if (scored == null) {
+      scored = items.filter(function (it) {
+        var st = it.stage;
+        return st === "passed_gates" || st === "picked" || st === "bought" || st === "sold" || it.score != null;
+      }).length;
+    }
+    var buys = num(c.buys);
+    if (buys == null) buys = num(d.traded);
+    if (buys == null) {
+      buys = items.filter(function (it) { return it.stage === "bought" || it.stage === "sold"; }).length;
+    }
+    var reasons = num(c.reasons);
+    if (reasons == null) reasons = (d.kill_reasons || []).length;
+    if (!reasons) {
+      reasons = items.filter(function (it) { return it.reason; }).length;
+    }
+    var killPct = num(c.kill_pct);
+    if (killPct == null && scanned) killPct = 100 * killed / scanned;
+    return { pairs: scanned || 0, killed: killed || 0, kill_pct: killPct, scored: scored || 0, buys: buys || 0, reasons: reasons || 0 };
+  }
+
+  function buySizeLabel(s) {
+    var isReal = String(s.mode_label || s.mode || "").toUpperCase() === "REAL";
+    if (isReal) return "$3";
+    var sz = null;
+    try {
+      var ds = s.desk_settings || s.settings || {};
+      var buy = (ds.mode && ds.mode.values && ds.mode.values.buy_usd) || {};
+      sz = num(buy.value);
+    } catch (e1) {}
+    if (sz == null) return "";
+    return "$" + (sz % 1 ? sz.toFixed(2) : String(Math.round(sz)));
+  }
+
+  function stopTrail(s) {
+    try {
+      var ds2 = s.desk_settings || s.settings || {};
+      var vals = (ds2.mode && ds2.mode.values) || {};
+      var stop = num(vals.stop_pct && vals.stop_pct.value);
+      var trail = num(vals.trail_start_pct && vals.trail_start_pct.value);
+      if (stop != null || trail != null) {
+        return {
+          stop: stop,
+          trail: trail,
+          pill: (stop != null ? "−" + String(stop) + "%" : "") + (stop != null && trail != null ? " · " : "") + (trail != null ? "+" + String(trail) + "%" : ""),
+          sub: (stop != null ? "−" + String(stop) + "% stop" : "stop") + " · trail"
+        };
+      }
+    } catch (e2) {}
+    var pill = ((s.dashboard || {}).agents || {}).risk || {};
+    return { stop: null, trail: null, pill: pill.pill || "stop · trail", sub: "stop · trail" };
   }
 
   function rowBadge(row, counts, s) {
@@ -229,54 +235,44 @@
     }
     if (row.key === "analyst") return fmtCount(counts.scored || 0) + " scored";
     if (row.key === "executor") {
-      /* PAPER size from desk settings; REAL is always $3 and never reads the paper value. */
-      var isReal = String(s.mode_label || s.mode || "").toUpperCase() === "REAL";
-      if (isReal) return "size $3";
-      var sz = null;
-      try {
-        var ds = s.desk_settings || s.settings || {};
-        var buy = (ds.mode && ds.mode.values && ds.mode.values.buy_usd) || {};
-        sz = num(buy.value);
-      } catch (e1) {}
-      return sz != null ? ("size $" + (sz % 1 ? sz.toFixed(2) : String(Math.round(sz)))) : "size";
+      var sz = buySizeLabel(s);
+      return sz ? ("size " + sz) : "size";
     }
-    if (row.key === "risk") {
-      try {
-        var ds2 = s.desk_settings || s.settings || {};
-        var vals = (ds2.mode && ds2.mode.values) || {};
-        var stop = num(vals.stop_pct && vals.stop_pct.value);
-        var trail = num(vals.trail_start_pct && vals.trail_start_pct.value);
-        var parts = [];
-        if (stop != null) parts.push("−" + String(stop) + "%");
-        if (trail != null) parts.push("trail +" + String(trail) + "%");
-        if (parts.length) return parts.join(" · ");
-      } catch (e2) {}
-      var pill = ((s.dashboard || {}).agents || {}).risk || {};
-      return pill.pill || "stop · trail";
-    }
+    if (row.key === "risk") return stopTrail(s).pill;
     if (row.key === "logger") return fmtCount(counts.reasons || 0) + " reasons";
     return "";
   }
 
-  function barWidth(row, counts) {
-    var pairs = Math.max(1, Number(counts && counts.pairs) || 1);
-    if (row.key === "filter") return Math.max(8, Math.min(100, Number(counts.kill_pct) || 0));
-    if (row.key === "analyst") return Math.max(8, Math.min(100, 100 * (Number(counts.scored) || 0) / pairs));
-    if (row.key === "executor") return Math.max(8, Math.min(100, 100 * (Number(counts.buys) || 0) / Math.max(1, Number(counts.scored) || pairs)));
-    if (row.key === "scout") return 70;
-    if (row.key === "risk") return 40;
-    if (row.key === "logger") return 30;
-    return 20;
+  function rowSub(row, counts, s) {
+    if (row.key === "filter") {
+      var pctK = counts && counts.kill_pct;
+      return pctK != null ? ("kills " + Number(pctK).toFixed(0) + "%") : "kills";
+    }
+    if (row.key === "risk") return stopTrail(s).sub;
+    if (row.key === "executor") {
+      var sz = buySizeLabel(s);
+      return sz ? ("size " + sz) : "buy fills";
+    }
+    return row.sub;
   }
 
   function latestOn(items, row) {
     var best = null, bestTs = -1;
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
-      var k = stageKeyOf(it);
-      var hit = (row.key === "logger")
-        ? (it.stage === "skipped" || it.stage === "sold")
-        : (k === row.key);
+      var st = String(it.stage || "");
+      var hit = false;
+      if (row.key === "logger") {
+        hit = !!(st === "skipped" || st === "sold" || it.reason);
+      } else if (row.key === "risk") {
+        hit = false;
+      } else if (row.key === "executor") {
+        hit = (st === "bought" || st === "sold");
+      } else if (st === "skipped" || (it.ok === false && st !== "sold" && st !== "bought")) {
+        hit = killRowOf(it) === row.key;
+      } else {
+        hit = stageKeyOf(it) === row.key && st !== "sold";
+      }
       if (!hit) continue;
       var ts = num(it.ts) || 0;
       if (ts >= bestTs) { best = it; bestTs = ts; }
@@ -284,111 +280,235 @@
     return best;
   }
 
-  function pillHtml(ev, snap) {
-    if (!ev) return "";
-    var cls = "pipe-pill tone-" + (ev.tone || "info") + (snap && !reduceMotion ? " snap-in" : "");
-    return '<span class="' + cls + '">' +
-      (ev.skull ? '<span class="pipe-skull" aria-hidden="true">☠</span> ' : "") +
-      esc(ev.text) + "</span>";
-  }
-
-  function fallbackPill(row) {
-    var text = row.key === "scout" ? "Pump.fun + Raydium…"
-      : row.key === "executor" ? "nothing passed yet"
-      : row.key === "logger" ? "reason for all"
-      : "";
-    if (!text) return "";
-    return '<span class="pipe-pill tone-idle">' + esc(text) + "</span>";
-  }
-
-  function renderAgents(s) {
-    var host = $("#deskAgents");
-    var card = $("#deskCard");
-    if (!host) return;
-    if (card) card.hidden = false;
-    var items = pipelineOf(s);
-    var d = s.dashboard || {};
-    var counts = d.pipe_counts || {};
-    if (!counts.pairs) {
-      counts = {
-        pairs: num(d.scanned) || items.length,
-        killed: num(d.killed) || 0,
-        kill_pct: (num(d.scanned) ? (100 * (num(d.killed) || 0) / d.scanned) : 0),
-        scored: ((d.agents || {}).analyst || {}).count || 0,
-        buys: num(d.traded) || 0,
-        reasons: (d.kill_reasons || []).length
-      };
-    }
-    var title = $("#deskTitle");
-    if (title) title.textContent = "Desk · " + STAGES.length + " agents";
-    var cnt = $("#deskCounts");
-    if (cnt) {
-      var traded = counts.buys || 0;
-      cnt.innerHTML = (counts.pairs || 0).toLocaleString("en-US") + " scanned · <b class='up'>" + traded + " traded</b>";
-    }
-
-    /* Build the six single-line rows once; later ticks only patch bar/count/pill. */
-    if (!host.querySelector(".pipe-row")) {
-      host.className = "pipe";
-      host.innerHTML = STAGES.map(function (row) {
-        return '<div class="pipe-row" data-stage="' + row.key + '">' +
-          '<span class="pipe-bar bar-' + row.key + '" aria-hidden="true"></span>' +
-          '<span class="pipe-icon" style="--pipe-c:' + row.color + '">' +
-            '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-            (row.key === "scout" ? '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>' :
-             row.key === "filter" ? '<polygon points="3,4 21,4 14,13 14,19 10,21 10,13"/>' :
-             row.key === "analyst" ? '<path d="M12 3 4 7v6c0 5 3.5 7.5 8 9 4.5-1.5 8-4 8-9V7z"/><path d="m9 12 2 2 4-4"/>' :
-             row.key === "executor" ? '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>' :
-             row.key === "risk" ? '<path d="M4 14c3-6 5-6 8-2s5 4 8 2"/><path d="M4 18c3-4 5-4 8 0s5 2 8-2"/>' :
-             '<path d="M6 4h12v16H6z"/><path d="M9 8h6M9 12h6M9 16h4"/>') +
-            "</svg></span>" +
-          '<span class="pipe-name">' + esc(row.name) + "</span>" +
-          '<span class="pipe-events" aria-live="polite"></span>' +
-          '<span class="pipe-count c-' + row.key + '"></span>' +
-        "</div>";
-      }).join("");
-      STAGES.forEach(function (row) {
-        var it = latestOn(items, row);
-        var slot = host.querySelector('.pipe-row[data-stage="' + row.key + '"] .pipe-events');
-        if (!slot) return;
-        if (it) slot.innerHTML = pillHtml(eventText(it, row), false);
-        else slot.innerHTML = fallbackPill(row);
-      });
-      items.forEach(function (it) {
-        if (it.mint) follow[String(it.mint)] = stageKeyOf(it);
-      });
-      follow._init = 1;
-    }
-
-    STAGES.forEach(function (row) {
-      var el = host.querySelector('.pipe-row[data-stage="' + row.key + '"]');
-      if (!el) return;
-      var bar = el.querySelector(".pipe-bar");
-      if (bar) bar.style.width = barWidth(row, counts) + "%";
-      var c = el.querySelector(".pipe-count");
-      if (c) c.textContent = rowBadge(row, counts, s);
-    });
-
-    /* Follow a coin down the rows: enqueue a snap-in pill when its stage changes. */
+  function lastTrade(s, items) {
+    var best = null, bestTs = -1;
     items.forEach(function (it) {
-      var mint = String(it.mint || "");
-      if (!mint) return;
-      var rowKey = stageKeyOf(it);
-      var prev = follow[mint];
-      if (prev !== rowKey) {
-        follow[mint] = rowKey;
-        if (!follow._init) return;
-        var row = STAGES.filter(function (r) { return r.key === rowKey; })[0];
-        if (row) enqueueEvent(rowKey, eventText(it, row));
-        if (it.stage === "skipped" && prev && prev !== "logger") {
-          var diedOn = STAGES.filter(function (r) { return r.key === prev; })[0];
-          if (diedOn) enqueueEvent(diedOn.key, eventText(it, diedOn));
+      if (it.stage !== "sold" && it.stage !== "bought") return;
+      var ts = num(it.ts) || 0;
+      if (ts >= bestTs) { best = it; bestTs = ts; }
+    });
+    (s.trades || []).forEach(function (t) {
+      if (!t || t.open === true) return;
+      if (t.closed_at || t.exit != null || t.pnl_usd != null) {
+        var ts = num(t.closed_at) || num(t.ts) || 0;
+        if (ts >= bestTs) {
+          best = {
+            symbol: t.symbol, name: t.name, logo: t.logo, mint: t.mint,
+            stage: "sold", pnl_usd: t.pnl_usd, reason: t.exit_reason, ts: ts,
+            size_usd: t.size_usd
+          };
+          bestTs = ts;
         }
       }
     });
-    follow._init = 1;
-    ensureEventTimer();
-    tickEvents();
+    return best;
+  }
+
+  function openPositions(s) {
+    var lists = [];
+    if (Array.isArray(s.trades)) lists.push(s.trades);
+    if (Array.isArray(s.positions)) lists.push(s.positions);
+    if (s.dashboard && Array.isArray(s.dashboard.positions)) lists.push(s.dashboard.positions);
+    var out = [], seen = {};
+    var pipe = pipelineOf(s);
+    var qmap = {};
+    try { qmap = (root.state && root.state.quotes) || {}; } catch (e0) { qmap = {}; }
+    lists.forEach(function (list) {
+      list.forEach(function (p) {
+        var mode = String(p.mode || "").toUpperCase();
+        var source = String(p.source || "").toLowerCase();
+        if (mode === "FOMO" || source === "wallet") return;
+        var st = String(p.status || p.side_or_status || "").toLowerCase();
+        var isOpen = p.open === true || st === "open" || st === "active" ||
+          (!p.closed_at && p.entry != null && p.exit == null);
+        if (!isOpen) return;
+        var mint = String(p.mint || "");
+        var id = mint || String(p.symbol || "");
+        if (!id || seen[id]) return;
+        seen[id] = 1;
+        var q = mint ? qmap[mint] : null;
+        var mark = num(p.mark_price) || num(p.mark) || (q && (num(q.price) || num(q.px)));
+        var entry = num(p.entry) || num(p.avg) || num(p.entry_price);
+        var pnlPct = num(p.pnl_pct);
+        if ((pnlPct == null || (pnlPct === 0 && p.pnl_usd == null)) && mark != null && entry) {
+          pnlPct = 100 * (mark - entry) / entry;
+        }
+        var logo = p.logo || p.image;
+        if (!logo && mint) {
+          var hit = null;
+          for (var i = 0; i < pipe.length; i++) { if (pipe[i].mint === mint) { hit = pipe[i]; break; } }
+          logo = (hit && hit.logo) || ("https://dd.dexscreener.com/ds-data/tokens/solana/" + mint + ".png");
+        }
+        out.push({
+          symbol: p.symbol || p.name, logo: logo, mint: mint,
+          pnl_pct: pnlPct, pnl_usd: num(p.pnl_usd), size_usd: num(p.size_usd)
+        });
+      });
+    });
+    return out;
+  }
+
+  function coinHtml(item, row, s) {
+    if (!item) {
+      var idle = row.key === "scout" ? "Pump.fun + Raydium…"
+        : row.key === "executor" ? "nothing passed yet"
+        : "";
+      if (!idle) return { html: "", sig: "empty" };
+      return { html: '<span class="pipe-coin tone-idle"><span class="pipe-msg">' + esc(idle) + "</span></span>", sig: "idle:" + idle };
+    }
+    var sym = "$" + cleanSym(item.symbol || item.name || "");
+    var why = String(item.reason || "").replace(/\s+/g, " ").trim();
+    var tone = "idle";
+    var msg = "";
+    var showLogo = true;
+    var st = String(item.stage || "");
+
+    if (row.key === "scout") {
+      tone = "idle";
+      msg = "new pair";
+    } else if (row.key === "filter") {
+      if (st === "skipped" || item.ok === false) {
+        tone = isKill(item) ? "kill" : "idle";
+        msg = (tone === "kill" ? "× " : "") + (why || (tone === "kill" ? "killed" : "skipped"));
+      } else {
+        tone = "pass";
+        msg = "passed rug";
+      }
+    } else if (row.key === "analyst") {
+      var sc = num(item.score);
+      if (st === "skipped" || item.ok === false) {
+        tone = isKill(item) ? "kill" : "idle";
+        if (tone === "kill") {
+          if (/[<>]/.test(why) || /score/i.test(why)) msg = "× " + why;
+          else if (sc != null) msg = "× " + fmtScore(sc);
+          else msg = "× " + (why || "score failed");
+        } else {
+          msg = why || "skipped";
+        }
+      } else {
+        tone = "pass";
+        msg = "score " + (sc != null ? fmtScore(sc) + " ✓" : "passed ✓");
+      }
+    } else if (row.key === "executor") {
+      if (st === "bought") {
+        tone = "pass";
+        var sz = num(item.size_usd) || num(item.size);
+        msg = "buy " + (sz != null ? money(sz).replace("+", "") : (buySizeLabel(s) || ""));
+      } else {
+        var pnl = num(item.pnl_usd);
+        tone = pnl == null ? "idle" : pnl >= 0 ? "pass" : "kill";
+        msg = "last " + (pnl != null ? money(Math.round(pnl)) : "sold") + " · " + sym;
+        /* last-line already includes the ticker; keep logo + ticker too for the video look when buying, not here */
+      }
+    } else if (row.key === "logger") {
+      showLogo = false;
+      tone = "idle";
+      var died = killRowOf(item);
+      if (st === "sold") {
+        msg = (why ? "risk " + why + " → " : "risk → ") + "sold " + sym;
+      } else if (st === "skipped" || item.ok === false) {
+        msg = (died === "analyst" ? "analyst " : "filter ") + (isKill(item) ? "killed " : "skipped ") + sym;
+      } else if (died === "analyst" || st === "passed_gates" || st === "picked") {
+        msg = "analyst passed " + sym;
+      } else {
+        msg = (why || (st || "update")) + " " + sym;
+      }
+    } else if (st === "skipped" || item.ok === false) {
+      tone = isKill(item) ? "kill" : "idle";
+      msg = "× " + (why || "killed");
+    } else {
+      tone = "pass";
+      msg = why || "moved on";
+    }
+
+    var html = '<span class="pipe-coin tone-' + tone + '">' +
+      (showLogo ? logoTag(item) : "") +
+      (row.key === "logger" || (row.key === "executor" && st !== "bought") ? "" : '<b class="pipe-sym">' + esc(sym) + "</b>") +
+      '<span class="pipe-msg">' + esc(msg) + "</span></span>";
+    var sig = [row.key, item.mint || sym, st, tone, msg, item.logo || ""].join("|");
+    return { html: html, sig: sig };
+  }
+
+  function holdingsHtml(holds) {
+    if (!holds || !holds.length) return { html: "", sig: "empty" };
+    var html = '<span class="pipe-holds">' + holds.slice(0, 4).map(function (h) {
+      var p = num(h.pnl_pct);
+      var tone = p == null || Math.abs(p) < 0.05 ? "idle" : p > 0 ? "pass" : "kill";
+      var label = p == null ? "—" : pct(p);
+      return '<span class="pipe-hold tone-' + tone + '">' + logoTag(h) + "<em>" + esc(label) + "</em></span>";
+    }).join("") + (holds.length > 4 ? '<span class="pipe-hold-more">+' + (holds.length - 4) + "</span>" : "") + "</span>";
+    var sig = holds.map(function (h) { return (h.symbol || "") + (h.pnl_pct == null ? "" : Number(h.pnl_pct).toFixed(2)); }).join("|");
+    return { html: html, sig: sig };
+  }
+
+  function renderAgents(s) {
+    var cards = $all(".pipe-card");
+    if (!cards.length) return;
+    var items = pipelineOf(s);
+    var counts = deriveCounts(s, items);
+    var titleText = "Desk · " + STAGES.length + " agents";
+    var traded = counts.buys || 0;
+    var countsHtml = (counts.pairs || 0).toLocaleString("en-US") + " scanned · <b class='" + (traded > 0 ? "up" : "") + "'>" + traded + " traded</b>";
+    var holds = openPositions(s);
+    var last = lastTrade(s, items);
+
+    var built = {};
+    STAGES.forEach(function (row) {
+      var ev;
+      if (row.key === "risk") ev = holdingsHtml(holds);
+      else if (row.key === "executor") {
+        var buying = latestOn(items, row);
+        if (buying && buying.stage === "bought") ev = coinHtml(buying, row, s);
+        else ev = last ? coinHtml(last, row, s) : coinHtml(null, row, s);
+      } else {
+        ev = coinHtml(latestOn(items, row), row, s);
+      }
+      built[row.key] = {
+        ev: ev,
+        badge: rowBadge(row, counts, s),
+        sub: rowSub(row, counts, s)
+      };
+    });
+
+    cards.forEach(function (card) {
+      card.hidden = false;
+      var title = card.querySelector(".pipe-title");
+      if (title) title.textContent = titleText;
+      var cnt = card.querySelector(".pipe-counts");
+      if (cnt) cnt.innerHTML = countsHtml;
+      var host = card.querySelector(".pipe");
+      if (!host) return;
+      if (!host.querySelector(".pipe-row")) {
+        host.className = "pipe";
+        host.innerHTML = STAGES.map(function (row) {
+          return '<div class="pipe-row" data-stage="' + row.key + '">' +
+            '<div class="pipe-left">' +
+              '<span class="pipe-icon" style="--pipe-c:' + row.color + '">' +
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+                ICONS[row.key] + "</svg></span>" +
+              '<span class="pipe-id"><b class="pipe-name">' + esc(row.name) + '</b><small class="pipe-sub">' + esc(row.sub) + "</small></span>" +
+            "</div>" +
+            '<div class="pipe-events" aria-live="polite"></div>' +
+            '<span class="pipe-count c-' + row.key + '"></span>' +
+          "</div>";
+        }).join("");
+      }
+      STAGES.forEach(function (row) {
+        var el = host.querySelector('.pipe-row[data-stage="' + row.key + '"]');
+        if (!el) return;
+        var pack = built[row.key];
+        var sub = el.querySelector(".pipe-sub");
+        if (sub && sub.textContent !== pack.sub) sub.textContent = pack.sub;
+        var c = el.querySelector(".pipe-count");
+        if (c && c.textContent !== pack.badge) c.textContent = pack.badge;
+        var slot = el.querySelector(".pipe-events");
+        var sigKey = (card.id || "card") + ":" + row.key;
+        if (slot && rowSig[sigKey] !== pack.ev.sig) {
+          rowSig[sigKey] = pack.ev.sig;
+          slot.innerHTML = pack.ev.html || "";
+        }
+      });
+    });
   }
 
   /* ---------- logger: insert at top, 0.25s slide+fade ---------- */
@@ -409,60 +529,73 @@
         id: (ts || "") + "|" + (mint || "") + "|" + (text || "") + "|" + (reason || "")
       });
     }
+    pipelineOf(s).forEach(function (it) {
+      if (!it.reason && it.stage !== "sold" && it.stage !== "skipped" && it.stage !== "bought") return;
+      var row = stageKeyOf(it);
+      var ev = it.reason || it.stage || "";
+      var tone = (it.stage === "bought") ? "buy" : (it.stage === "sold" ? ((num(it.pnl_usd) || 0) >= 0 ? "pass" : "kill") : (it.ok === false || it.stage === "skipped" ? (isKill(it) ? "kill" : "idle") : "idle"));
+      add(it.ts, row, it.symbol, ev, it.reason, tone, it.mint);
+    });
     var log = (s.dashboard && s.dashboard.log) || [];
-    log.forEach(function (r) {
-      var agent = r.agent === "scanner" ? "SCOUT" : r.agent === "auditor" ? "FILTER" :
-        r.agent === "analyst" ? "ANALYST" : r.agent === "executor" ? "EXECUTOR" :
-        r.agent === "risk" ? "RISK" : String(r.agent || "LOG").toUpperCase();
-      add(r.ts, agent, r.symbol, r.text, r.reason, r.tone, r.mint);
+    log.forEach(function (line) {
+      if (!line) return;
+      if (typeof line === "string") add(0, "logger", "", line, line, "idle", "");
+      else add(line.ts, line.agent || line.stage || "logger", line.symbol, line.text || line.msg || line.reason, line.reason, line.tone, line.mint);
     });
-    pipelineOf(s).forEach(function (e) {
-      if (e.stage !== "skipped" && e.stage !== "sold" && e.stage !== "bought") return;
-      var agent = e.stage === "bought" ? "EXECUTOR" : e.stage === "sold" ? "RISK" : "FILTER";
-      var tone = e.stage === "bought" ? "buy" : (e.stage === "sold" ? ((num(e.pnl_usd) || 0) >= 0 ? "pass" : "kill") : "kill");
-      var text = e.stage === "bought" ? "bought" : e.stage === "sold" ? ("sold " + (e.reason || "") + (e.pnl_usd != null ? " " + money(e.pnl_usd) : "")) : ("killed");
-      add(e.ts, agent, e.symbol, text, e.reason, tone, e.mint);
-    });
-    rows.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
-    /* unique by id */
-    var seen = {}, uniq = [];
-    rows.forEach(function (r) { if (!seen[r.id]) { seen[r.id] = 1; uniq.push(r); } });
-    rows = uniq.slice(0, 40);
-    if (!rows.length) { if (card) card.hidden = true; return; }
-    if (card) card.hidden = false;
+    rows.sort(function (a, b) { return b.ts - a.ts; });
+    var seen = {};
+    rows = rows.filter(function (r) { if (seen[r.id]) return false; seen[r.id] = 1; return true; }).slice(0, 12);
+    if (card) card.hidden = rows.length === 0;
+    if (!rows.length) { host.innerHTML = ""; return; }
     var killed = $("#loggerKilled");
     if (killed) {
-      var kn = (s.dashboard && s.dashboard.killed) || rows.filter(function (r) { return r.tone === "kill"; }).length;
-      killed.textContent = kn ? (kn + " killed") : "";
-    }
-    var first = !host.childElementCount;
-    var html = rows.map(function (r, i) {
-      var fresh = !first && !logSeen[r.id] && !reduceMotion && i < 6;
-      logSeen[r.id] = 1;
-      var ag = r.agent.toLowerCase();
-      return '<div class="lg-row tone-' + esc(r.tone) + (fresh ? " lg-in" : "") + '">' +
-        '<span class="lg-time">' + esc(hm(r.ts)) + "</span>" +
-        '<span class="lg-ag ag-' + esc(ag) + '">' + esc(r.agent) + "</span>" +
-        '<span class="lg-body">' +
-          (r.symbol ? ("$" + esc(r.symbol) + " ") : "") +
-          esc(r.text) +
-          (r.reason && r.tone === "kill" ? " — " + esc(r.reason) : "") +
-        "</span></div>";
-    }).join("");
-    host.innerHTML = html;
-    var killed = $("#loggerKilled");
-    if (killed) {
-      var n = ((s.dashboard || {}).pipe_counts || {}).killed;
-      if (n == null) n = (s.dashboard || {}).killed;
+      var n = ((s.dashboard || {}).killed) || rows.filter(function (r) { return r.tone === "kill"; }).length;
       killed.textContent = n ? (Number(n).toLocaleString("en-US") + " killed") : "";
     }
+    var have = {};
+    Array.prototype.forEach.call(host.children, function (el) { have[el.getAttribute("data-id") || ""] = el; });
+    var next = document.createDocumentFragment();
+    var firstNew = true;
+    rows.forEach(function (r) {
+      var existing = have[r.id];
+      if (existing) {
+        next.appendChild(existing);
+        firstNew = false;
+        return;
+      }
+      var div = document.createElement("div");
+      div.className = "lg-row tone-" + r.tone + (firstNew && !logSeen[r.id] && !reduceMotion ? " lg-in" : "");
+      div.setAttribute("data-id", r.id);
+      var body = r.text || r.reason || "";
+      if (r.symbol) body = (body ? body + " " : "") + "$" + r.symbol;
+      div.innerHTML = '<span class="lg-time">' + esc(hm(r.ts)) + '</span><span class="lg-ag ag-' + esc(r.agent) + '">' +
+        esc((r.agent || "").toUpperCase()) + '</span><span class="lg-body">' + esc(body) + "</span>";
+      next.appendChild(div);
+      logSeen[r.id] = 1;
+      firstNew = false;
+    });
+    host.innerHTML = "";
+    host.appendChild(next);
   }
 
-  /* ---------- why they died: bars snap to width ---------- */
   function renderReasons(s) {
     var card = $("#reasonsCard");
     var list = (s.dashboard && s.dashboard.kill_reasons) || [];
     if (!card) return;
+    if (!list.length) {
+      /* derive from pipeline if the dashboard list is missing */
+      var tallies = {};
+      pipelineOf(s).forEach(function (it) {
+        if (!it.reason || (it.ok !== false && it.stage !== "skipped")) return;
+        var key = String(it.reason).replace(/\s+/g, " ").trim();
+        /* bucket "already up 36% in 5m" style reasons */
+        key = key.replace(/already up \d+(\.\d+)?%/i, "Already up").replace(/buy share \d+% too weak/i, "Buy share too weak");
+        if (!key) return;
+        if (!tallies[key]) tallies[key] = { reason: key, count: 0 };
+        tallies[key].count += 1;
+      });
+      list = Object.keys(tallies).map(function (k) { return tallies[k]; });
+    }
     if (!list.length) { card.hidden = true; return; }
     card.hidden = false;
     var max = 1;
@@ -484,7 +617,6 @@
     }).join("");
   }
 
-  /* ---------- public hook used by app.js ---------- */
   function render(s, perf, live) {
     if (!s) return;
     try { renderTicker(s, live); } catch (e) { /* keep the rest of the desk up */ }
@@ -499,11 +631,6 @@
     homeActive = !!on;
     var tk = $("#ticker");
     if (tk) tk.classList.toggle("tk-paused", !homeActive);
-    if (!homeActive) {
-      if (eventTimer) { window.clearInterval(eventTimer); eventTimer = 0; }
-    } else {
-      ensureEventTimer();
-    }
   }
   function quote(mint) { return quotes[mint] || null; }
   root.BuddyDash = { render: render, quote: quote, setActive: setActive, STAGES: STAGES };

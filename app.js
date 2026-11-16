@@ -2434,22 +2434,25 @@
   }
 
   async function loadLiveState(id) {
-    const results = await Promise.all(rawStateUrls(id).map(async (url) => {
+    const urls = rawStateUrls(id);
+    const found = [];
+    let saw404 = 0;
+    for (let i = 0; i < urls.length; i++) {
       try {
-        const data = await fetchJsonSilent(url);
-        if (!data || typeof data !== "object") return { ok: false, status: 0 };
-        return { ok: true, data };
+        const data = await fetchJsonSilent(urls[i]);
+        if (!data || typeof data !== "object") continue;
+        found.push(data);
+        const age = Date.now() / 1000 - stateStamp(data);
+        if (stateStamp(data) && age < 20) break; // fresh enough; skip the other 8MB copies
       } catch (e) {
-        return { ok: false, status: e && e.status };
+        if (e && e.status === 404) saw404++;
       }
-    }));
-    const found = results.filter((x) => x.ok).map((x) => x.data);
+    }
     if (found.length) {
       found.sort((a, b) => stateStamp(b) - stateStamp(a));
       return { data: found[0], notFound: false };
     }
-    const saw404 = results.length > 0 && results.every((x) => x.status === 404);
-    return { data: null, notFound: saw404 };
+    return { data: null, notFound: saw404 === urls.length };
   }
 
   let inflight = false;
@@ -2547,7 +2550,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v78"; /* no-ticker-scanner-v78 */
+      BuddySettings.hooks.version = "app v79"; /* pipe-card-mqtt-v79 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
@@ -2856,16 +2859,18 @@
   setInterval(() => {
     if (document.visibilityState === "hidden") return;
     tickHeld();
-    // When the 1s MQTT snapshot is live, skip the published-file fetch to avoid flicker
-    // and overwriting fresh marks with a ~60s-old state.json. Still refetch every 15s
-    // for activity / waiting-room rows the live snap does not carry.
+    // MQTT snap is ~35KB every 1–2s. GitHub state.json is ~8MB and raw.githubusercontent
+    // caches it for 300s, so polling it on a phone looks like a 30–60s-stale desk.
+    // Prefer the live snap; only refetch the published file every 30s as a backup.
     const live = window.BuddyLive && BuddyLive.status() === "live";
-    if (live && state.data && Date.now() - (state._lastFullLoad || 0) < 15000) {
-      if (BuddyLive.snap()) {
-        state.data = BuddyLive.merge(state.data, BuddyLive.snap());
+    const snap = window.BuddyLive && BuddyLive.snap ? BuddyLive.snap() : null;
+    const snapAge = snap && snap.ts ? (Date.now() / 1000 - Number(snap.ts)) : 1e9;
+    if (state.data && (live || (snap && snapAge < 60))) {
+      if (snap) {
+        state.data = BuddyLive.merge(state.data, snap);
         render();
       }
-      return;
+      if (Date.now() - (state._lastFullLoad || 0) < 30000) return;
     }
     state._lastFullLoad = Date.now();
     load();

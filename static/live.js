@@ -8,8 +8,8 @@
   var ENC = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
   var DEC = typeof TextDecoder !== "undefined" ? new TextDecoder() : null;
   var st = {
-    ws: null, snap: null, lastAt: 0, connected: false, retry: 2000, timer: null, ping: null,
-    id: "", hooks: {}, topic: "", cmdTopic: "", key: null, pendingAcks: {}
+    ws: null, snap: null, lastAt: 0, connected: false, retry: 1500, timer: null, ping: null,
+    id: "", hooks: {}, topic: "", cmdTopic: "", key: null, pendingAcks: {}, buf: new Uint8Array(0), useProto: true, gotConnack: false
   };
 
   function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ("0" + b.toString(16)).slice(-2); }).join(""); }
@@ -33,18 +33,47 @@
     return pkt(0x30 | (qos ? 0x02 : 0), body);
   }
 
-  function parse(u8, cb) {
+  /* Buffer bytes across WebSocket frames. A 35KB retained PUBLISH is often split
+     on iOS Safari / mobile networks; parsing each frame alone silently fails decrypt
+     and leaves the app on the cached GitHub state.json fallback. */
+  function parseBuf(cb) {
+    var buf = st.buf;
+    if (!buf || !buf.length) return;
     var i = 0;
-    while (i < u8.length) {
-      var t = u8[i], mult = 1, n = 0, j = i + 1, b;
-      do { b = u8[j++]; n += (b & 127) * mult; mult *= 128; } while (b & 128);
-      cb(t >> 4, t & 15, u8.subarray(j, j + n));
+    while (i < buf.length) {
+      if (i + 2 > buf.length) break;
+      var j = i + 1, mult = 1, n = 0, b, lenBytes = 0, ok = false;
+      while (j < buf.length && lenBytes < 4) {
+        b = buf[j++];
+        n += (b & 127) * mult;
+        mult *= 128;
+        lenBytes++;
+        if ((b & 128) === 0) { ok = true; break; }
+      }
+      if (!ok) break;
+      if (j + n > buf.length) break;
+      var body = buf.subarray(j, j + n);
+      var copy = new Uint8Array(body.length);
+      copy.set(body);
+      cb(buf[i] >> 4, buf[i] & 15, copy);
       i = j + n;
     }
+    st.buf = i > 0 ? buf.subarray(i) : buf;
+    if (st.buf.length > 2 * 1024 * 1024) st.buf = new Uint8Array(0);
+  }
+
+  function pushBytes(u8, cb) {
+    if (!u8 || !u8.length) return;
+    var buf = st.buf || new Uint8Array(0);
+    var n = new Uint8Array(buf.length + u8.length);
+    n.set(buf, 0);
+    n.set(u8, buf.length);
+    st.buf = n;
+    parseBuf(cb);
   }
 
   function status() {
-    var fresh = st.snap && (Date.now() / 1000 - st.lastAt) < 15;
+    var fresh = st.snap && (Date.now() / 1000 - st.lastAt) < 25;
     return fresh ? "live" : (st.id ? "fallback" : "off");
   }
   function emitStatus() { if (st.hooks.onStatus) st.hooks.onStatus(status()); }
@@ -70,17 +99,31 @@
     st.topic = topic;
     st.cmdTopic = cmdTopic;
     st.key = key;
+    st.buf = new Uint8Array(0);
+    st.gotConnack = false;
     var ws;
-    try { ws = new WebSocket(BROKER, ["mqtt"]); } catch (e) { return later(id); }
+    try {
+      ws = st.useProto ? new WebSocket(BROKER, ["mqtt"]) : new WebSocket(BROKER);
+    } catch (e) {
+      if (st.useProto) {
+        try { ws = new WebSocket(BROKER); st.useProto = false; } catch (e2) { return later(id); }
+      } else {
+        return later(id);
+      }
+    }
     ws.binaryType = "arraybuffer";
     st.ws = ws;
     ws.onopen = function () { ws.send(connectPkt()); };
     ws.onmessage = function (ev) {
-      parse(new Uint8Array(ev.data), function (type, flags, body) {
+      var chunk = ev.data instanceof ArrayBuffer ? new Uint8Array(ev.data)
+        : (ev.data && ev.data.buffer) ? new Uint8Array(ev.data)
+        : ev.data ? ENC.encode(String(ev.data)) : new Uint8Array(0);
+      pushBytes(chunk, function (type, flags, body) {
         if (type === 2) { // CONNACK
           if (body[1] !== 0) { ws.close(); return; }
+          st.gotConnack = true;
           st.connected = true;
-          st.retry = 2000;
+          st.retry = 1500;
           ws.send(subscribePkt(topic));
           clearInterval(st.ping);
           st.ping = setInterval(function () { try { ws.send(new Uint8Array([0xc0, 0])); } catch (e) { /* ignore */ } }, 20000);
@@ -116,13 +159,23 @@
         }).catch(function () { /* wrong key / corrupt: ignore */ });
       });
     };
-    ws.onclose = function () { st.connected = false; clearInterval(st.ping); emitStatus(); later(id); };
+    ws.onclose = function () {
+      st.connected = false;
+      clearInterval(st.ping);
+      // iOS Safari sometimes rejects the "mqtt" subprotocol; retry once without it.
+      if (!st.gotConnack && st.useProto) {
+        st.useProto = false;
+        st.retry = 400;
+      }
+      emitStatus();
+      later(id);
+    };
     ws.onerror = function () { try { ws.close(); } catch (e) { /* ignore */ } };
   }
   function later(id) {
     clearTimeout(st.timer);
     st.timer = setTimeout(function () { if (st.id === id) open(id); }, st.retry);
-    st.retry = Math.min(30000, st.retry * 2);
+    st.retry = Math.min(15000, st.retry * 2);
   }
 
   function start(id, hooks) {
@@ -155,6 +208,24 @@
     out.set(iv, 2);
     out.set(ct, 14);
     return out;
+  }
+
+
+  function parseOne(u8, cb) {
+    var i = 0;
+    while (i + 2 <= u8.length) {
+      var j = i + 1, mult = 1, n = 0, b, lenBytes = 0, ok = false;
+      while (j < u8.length && lenBytes < 4) {
+        b = u8[j++];
+        n += (b & 127) * mult;
+        mult *= 128;
+        lenBytes++;
+        if ((b & 128) === 0) { ok = true; break; }
+      }
+      if (!ok || j + n > u8.length) break;
+      cb(u8[i] >> 4, u8[i] & 15, u8.subarray(j, j + n));
+      i = j + n;
+    }
   }
 
   st._pubPid = 1;
@@ -201,7 +272,8 @@
       var t = setTimeout(function () { if (!done) { done = true; try { ws.close(); } catch (e) {} resolve(false); } }, 8000);
       ws.onopen = function () { ws.send(connectPkt()); };
       ws.onmessage = function (ev) {
-        parse(new Uint8Array(ev.data), function (type, _f, body) {
+        var chunk = ev.data instanceof ArrayBuffer ? new Uint8Array(ev.data) : new Uint8Array(ev.data || []);
+        parseOne(chunk, function (type, _f, body) {
           if (type === 4 && body.length >= 2) {
             var paid = (body[0] << 8) | body[1];
             var pr = st._pubacks[paid];

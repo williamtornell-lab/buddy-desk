@@ -17,7 +17,7 @@
 <title>Buddy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"/>
-<link rel="stylesheet" href="static/app.css?v=78s"/>
+<link rel="stylesheet" href="static/app.css?v=79"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -78,13 +78,16 @@
         </div>
       </div>
 
-      <section id="presetCard" class="dash-card" aria-label="Coin filter presets">
-        <div id="presetSeg" class="preset-seg" role="group" aria-label="Coin filter presets"></div>
+      <section id="deskCard" class="dash-card pipe-card" aria-labelledby="deskTitle" hidden>
+        <div class="pipe-head">
+          <h2 id="deskTitle" class="pipe-title">Desk · 6 agents</h2>
+          <span id="deskCounts" class="pipe-counts"></span>
+        </div>
+        <div id="deskAgents" class="pipe"></div>
       </section>
 
-      <section id="deskCard" class="dash-card" aria-labelledby="deskTitle" hidden>
-        <div class="dash-head"><h2 id="deskTitle">Desk</h2><span id="deskCounts" class="muted"></span></div>
-        <div id="deskAgents" class="dk-list"></div>
+      <section id="presetCard" class="dash-card" aria-label="Coin filter presets">
+        <div id="presetSeg" class="preset-seg" role="group" aria-label="Coin filter presets"></div>
       </section>
 
       <section class="block" aria-labelledby="openHeading">
@@ -201,6 +204,13 @@
         <h2 id="agentsTab">Agents</h2>
         <button type="button" class="restart-btn restart-all" data-restart="all">Restart all</button>
       </div>
+      <section id="agentsPipeCard" class="dash-card pipe-card" aria-label="Desk pipeline" hidden>
+        <div class="pipe-head">
+          <h2 class="pipe-title">Desk · 6 agents</h2>
+          <span class="pipe-counts"></span>
+        </div>
+        <div id="agentsPipe" class="pipe"></div>
+      </section>
       <div id="agentCards" class="agents"></div>
       <details class="settings">
         <summary>Settings</summary>
@@ -313,12 +323,12 @@
 <script src="static/dexchart.js?v=3"></script>
 <script src="static/styles.js?v=7"></script>
 <script src="static/spark.js?v=7"></script>
-<script src="static/dash.js?v=78"></script>
-<script src="static/live.js?v=10"></script>
+<script src="static/dash.js?v=79"></script>
+<script src="static/live.js?v=79"></script>
 <script src="static/copy.js?v=5"></script>
 <script src="static/adaptive.js?v=1"></script>
 <script src="static/settings.js?v=78"></script>
 <script src="static/session.js?v=8"></script>
-  <script src="static/app.js?v=78"></script>
+  <script src="static/app.js?v=79"></script>
 </body>
 </html>
