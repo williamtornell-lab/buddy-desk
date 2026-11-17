@@ -1182,7 +1182,7 @@
     const failed = isFailedTrade(t);
     const bits = tradeBits(t, mode).filter((bit) => bit.indexOf("fees ") !== 0);
     const name = displayName(t);
-    if (name && name !== displayTicker(t)) bits.unshift(name);
+    const showName = !!(name && name !== displayTicker(t));
     return (
       '<div class="trade-row' + (failed ? " failed" : "") + '">' +
       '<button type="button" class="trade' + (failed ? " failed" : "") + '" data-trade="' + index + '">' +
@@ -1192,7 +1192,10 @@
       srcPill(t) +
       (window.BuddyStyles ? BuddyStyles.tagHtml(t, state.data) : "") +
       "</span>" +
-      '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" +
+      /* v83: long full name truncates; reason · size · time stay together on one line */
+      '<span class="meta-line ml-split">' +
+      (showName ? '<span class="ml-name">' + esc(name) + "</span>" : "") +
+      '<span class="ml-rest">' + esc((showName && bits.length ? " · " : "") + bits.join(" · ")) + "</span></span>" +
       "</span>" + pnlMarkup(t) +
       "</button>" + rowLinks(dexLink(t.mint, t) + fomoLink(t.link, "FOMO", t.mint)) +
       "</div>"
@@ -1958,6 +1961,14 @@
   }
 
   window.__buddyRender = () => { if (state.data) render(); };
+  window.__buddyLiveMark = (t) => liveMark(t);
+
+  function heroPct(p) {
+    const n = Number(p);
+    if (p == null || !Number.isFinite(n)) return "";
+    const a = Math.abs(n);
+    return "(" + (n < -0.005 ? "−" : "") + (a >= 10 ? Math.round(a) : a.toFixed(1)) + "%)";
+  }
 
   function liveEquityExtra(s, live) {
     if (live) return null;
@@ -1967,7 +1978,15 @@
       const src = String(t.mode || t.source || "").toUpperCase();
       if (/FOMO|REAL|LIVE|WALLET/.test(src)) return;
       const m = liveMark(t);
-      if (m && m.unrealized != null && Number.isFinite(m.unrealized)) { sum += m.unrealized; any = true; }
+      /* v83: a tick without a mark keeps that position's last known P&L (no balance flicker) */
+      const k = String(t.pos_key || t.mint || t.id || "");
+      state._uCache = state._uCache || {};
+      if (m && m.unrealized != null && Number.isFinite(m.unrealized)) {
+        sum += m.unrealized; any = true;
+        if (k) state._uCache[k] = { v: m.unrealized, at: Date.now() };
+      } else if (k && state._uCache[k] && Date.now() - state._uCache[k].at < 120000) {
+        sum += state._uCache[k].v; any = true;
+      }
     });
     return any ? sum : null;
   }
@@ -2029,16 +2048,40 @@
 
     const banner = $("#modeBanner");
     if (banner) banner.hidden = !live;
-    $("#stackLabel").textContent = live ? "Wallet balance" : "Paper balance";
+    /* v83 hero (ref2/u4b): "Equity · $start at HH:MM · N% max size", live equity = cash + open marks */
+    const eqExtra = live ? null : liveEquityExtra(s, live);
+    window.__buddyHero = { bal: paperPerf.bal, extra: eqExtra, open: (opensOf(s, tradesOf(s)) || []).length, ts: s.ts };
+    const heroPerf = live ? perf : Object.assign({}, paperPerf, eqExtra != null ? {
+      bal: paperPerf.bal + eqExtra,
+      usd: (paperPerf.usd || 0) + eqExtra,
+      pct: paperPerf.start ? (((paperPerf.usd || 0) + eqExtra) / paperPerf.start) * 100 : paperPerf.pct
+    } : {});
+    {
+      const kb = [live ? "Wallet equity" : "Equity"];
+      const st0 = live ? rPerf : paperPerf;
+      if (st0 && st0.known && st0.start != null) {
+        const d0 = (s.dashboard || {});
+        const sinceTs = toUnix(d0.since_reset || d0.since);
+        const hhmm = sinceTs ? new Date(sinceTs * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }) : "";
+        kb.push(money(st0.start).replace(/\.00$/, "") + (hhmm ? " at " + hhmm : ""));
+      }
+      let szUsd = null;
+      if (live) szUsd = 3;
+      else {
+        try { const ds = s.desk_settings || {}; szUsd = num(ds.mode && ds.mode.values && ds.mode.values.buy_usd && ds.mode.values.buy_usd.value); } catch (eK) { szUsd = null; }
+      }
+      if (szUsd != null && heroPerf.bal) kb.push(Math.max(1, Math.round(100 * szUsd / heroPerf.bal)) + "% max size");
+      $("#stackLabel").textContent = kb.join(" · ");
+    }
     const realRow = $("#realBalRow");
     if (realRow) realRow.hidden = true;
     let heroText;
     if (live) {
       heroText = perf.bal != null ? money(perf.bal) : "—";
     } else {
-      heroText = money(paperPerf.bal);
+      heroText = money(heroPerf.bal);
     }
-    if (window.BuddySpark && perf.bal != null && heroText === money(perf.bal)) BuddySpark.tween($("#bal"), perf.bal, money);
+    if (window.BuddySpark && heroPerf.bal != null && heroText === money(heroPerf.bal)) BuddySpark.tween($("#bal"), heroPerf.bal, money);
     else $("#bal").textContent = heroText;
     const row = $("#pnlRow");
     if (live) {
@@ -2046,23 +2089,23 @@
       const pct = perf.pct;
       if (window.BuddySpark && usd != null) {
         BuddySpark.tween($("#pnlUsd"), usd, signedMoney);
-        BuddySpark.tween($("#pnlPct"), pct, signedPct);
+        BuddySpark.tween($("#pnlPct"), pct, heroPct);
       } else {
         $("#pnlUsd").textContent = usd != null ? signedMoney(usd) : "—";
-        $("#pnlPct").textContent = pct != null ? signedPct(pct) : "—";
+        $("#pnlPct").textContent = pct != null ? heroPct(pct) : "—";
       }
       row.className = "pnl-row " + (usd != null ? toneOf(usd) : "flat");
       const startBit = rPerf.known ? "vs " + money(rPerf.start) + " start" : "hot wallet";
       $("#pnlSub").textContent = "Today's P&L " + startBit;
     } else {
       if (window.BuddySpark) {
-        BuddySpark.tween($("#pnlUsd"), paperPerf.usd, signedMoney);
-        BuddySpark.tween($("#pnlPct"), paperPerf.pct, signedPct);
+        BuddySpark.tween($("#pnlUsd"), heroPerf.usd, signedMoney);
+        BuddySpark.tween($("#pnlPct"), heroPerf.pct, heroPct);
       } else {
-        $("#pnlUsd").textContent = signedMoney(paperPerf.usd);
-        $("#pnlPct").textContent = signedPct(paperPerf.pct);
+        $("#pnlUsd").textContent = signedMoney(heroPerf.usd);
+        $("#pnlPct").textContent = heroPct(heroPerf.pct);
       }
-      row.className = "pnl-row " + tone;
+      row.className = "pnl-row " + (toneOf(heroPerf.usd) || tone);
       const startBit = paperPerf.known ? "vs " + money(paperPerf.start) + " paper start" : "paper start not in this file yet";
       $("#pnlSub").textContent = "Night P&L " + startBit;
     }
@@ -2092,7 +2135,7 @@
       try { BuddySession.render(s); } catch (e) { /* desk power / sessions are optional */ }
     }
     if (window.BuddySpark) {
-      try { BuddySpark.render(s, live ? rPerf : paperPerf, live, live ? null : liveEquityExtra(s, live)); } catch (e) { /* sparkline is optional */ }
+      try { BuddySpark.render(s, live ? rPerf : paperPerf, live, live ? null : eqExtra); } catch (e) { /* sparkline is optional */ }
     }
     const tsU = toUnix(s.ts);
     let quoteTs = 0;
@@ -2551,7 +2594,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v82"; /* opencards-v82 */
+      BuddySettings.hooks.version = "app v83"; /* desk-u4b-v83 hero+modes */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {

@@ -26,32 +26,43 @@
   try { st.range = (root.localStorage && localStorage.getItem("buddy.sparkRange")) || "reset"; } catch (e) { /* ignore */ }
   if (!(st.range in RANGES)) st.range = "reset";
 
+  /* v83: "$309.75" -> big dollars + dim cents (u4b/ref2 hero) when el has data-split */
+  function setTxt(el, str) {
+    str = String(str);
+    if (el.hasAttribute && el.hasAttribute("data-split")) {
+      var m = str.match(/^(.*?)(\.\d+)$/);
+      var html = m ? esc(m[1]) + '<span class="bal-c">' + esc(m[2]) + "</span>" : esc(str);
+      if (el.__lastHtml !== html) { el.innerHTML = html; el.__lastHtml = html; }
+    } else el.textContent = str;
+  }
+  function esc(x) { return String(x).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
   /* ---- count tween for hero numbers ---- */
   function tween(el, value, fmt) {
     if (!el) return;
     var v = num(value);
-    if (v == null) { el.textContent = fmt(value); return; }
+    if (v == null) { setTxt(el, fmt(value)); return; }
     var rec = tweens ? tweens.get(el) : el.__tw;
     if (!rec) {
       rec = { cur: v, to: v, raf: 0 };
       if (tweens) tweens.set(el, rec); else el.__tw = rec;
-      el.textContent = fmt(v);
+      setTxt(el, fmt(v));
       return;
     }
-    if (Math.abs(rec.to - v) < 1e-9) { if (!rec.raf) el.textContent = fmt(v); return; }
+    if (Math.abs(rec.to - v) < 1e-9) { if (!rec.raf) setTxt(el, fmt(v)); return; }
     var from = rec.cur, t0 = performance.now(), dur = 700;
     rec.to = v;
     el.classList.remove("tick-up", "tick-down");
     void el.offsetWidth;
     el.classList.add(v > from ? "tick-up" : "tick-down");
     if (rec.raf) cancelAnimationFrame(rec.raf);
-    var reduce = root.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) { rec.cur = v; rec.raf = 0; el.textContent = fmt(v); return; }
+    var reduce = false; /* v83: always count */
+    if (reduce) { rec.cur = v; rec.raf = 0; setTxt(el, fmt(v)); return; }
     (function step(now) {
       var k = Math.min(1, (now - t0) / dur);
       var e = 1 - Math.pow(1 - k, 3);
       rec.cur = from + (v - from) * e;
-      el.textContent = fmt(k >= 1 ? v : rec.cur);
+      setTxt(el, fmt(k >= 1 ? v : rec.cur));
       rec.raf = k < 1 ? requestAnimationFrame(step) : 0;
     })(t0);
   }
@@ -339,6 +350,14 @@
       if (scOverride) el.setAttribute("clip-path", "url(#spZoomClip)"); else el.removeAttribute("clip-path");
     });
     var dot = host.querySelector(".sp-dot");
+    if (!lerpLast && !scOverride) {
+      var lv = pts[pts.length - 1].v;
+      if (st.lastDotV != null && Math.abs(lv - st.lastDotV) > 0.004) {
+        dot.classList.remove("bump-up", "bump-down"); void dot.offsetWidth;
+        dot.classList.add(lv > st.lastDotV ? "bump-up" : "bump-down");
+      }
+      st.lastDotV = lv;
+    }
     dot.style.left = (xy[xy.length - 1][0] / W * 100) + "%";
     dot.style.top = (xy[xy.length - 1][1] / H * 100) + "%";
     st.drawn = { pts: series.pts, sc: sc, start: series.start };
@@ -360,7 +379,7 @@
     st.series = series;
     var zf = st.zoomFrom;
     st.zoomFrom = null;
-    if (zf && !(root.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+    if (zf && true) {
       if (st.anim) cancelAnimationFrame(st.anim);
       zoom(zf, series);
       return;
@@ -369,7 +388,7 @@
     var nl = series.pts[series.pts.length - 1];
     var grow = pl && nl && prev.pts.length && series.pts.length >= 2 && nl.ts > pl.ts && prev.since === series.since;
     if (st.anim) cancelAnimationFrame(st.anim);
-    if (!grow || (root.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) { draw(series); return; }
+    if (!grow) { draw(series); return; }
     var from = series.pts[series.pts.length - 2] || pl;
     var t0 = performance.now(), dur = 800;
     (function step(now) {

@@ -1,4 +1,4 @@
-/* Buddy dashboard v81 — Desk card + live Logger (MQTT log, no SCANNER kills, dedupe).
+/* Buddy dashboard v83 (u4b.mov copy) — Desk card + live Logger (MQTT log, no SCANNER kills, dedupe).
    Driven by real state.pipeline / pipe_counts. Mid-column fade, pill pulse, row flash.
    Live via MQTT snap; GitHub is fallback only. */
 (function (root) {
@@ -24,7 +24,7 @@
   });
 
   var reduceMotion = false;
-  try { reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e0) {}
+  /* v83: William's iPhone must show the live motion even with iOS "Reduce Motion" on — do not honour it here. */
 
   var logSeen = {};
   var tickerSig = "";
@@ -53,7 +53,10 @@
     return new Date((t > 1e12 ? t : t * 1000)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
   }
   function cleanSym(s) {
-    return String(s || "").replace(/^\$/, "").replace(/[\u202a-\u202e\u2066-\u2069]/g, "").trim().toUpperCase().slice(0, 12);
+    var t = String(s || "").replace(/[\u202a-\u202e\u2066-\u2069\ufe0f\u200d]/g, "");
+    try { t = t.replace(/\p{Extended_Pictographic}/gu, ""); } catch (eP) {}
+    t = t.replace(/^\$/, "").trim().toUpperCase();
+    return Array.from(t).slice(0, 12).join("");
   }
   function fmtPx(v) {
     var n = num(v); if (n == null) return "";
@@ -62,7 +65,8 @@
   function pct(v) {
     var n = num(v); if (n == null) return "";
     var abs = Math.abs(n);
-    return (n > 0 ? "+" : n < 0 ? "−" : "") + abs.toFixed(abs >= 100 ? 0 : (abs >= 10 ? 0 : 0)) + "%";
+    if (abs < 0.5) return "+0%";
+    return (n > 0 ? "+" : "−") + abs.toFixed(0) + "%";
   }
   function money(v) {
     var n = num(v); if (n == null) return "—";
@@ -76,7 +80,7 @@
     return "$" + Math.round(n);
   }
   function logoTag(item, cls) {
-    var letter = (cleanSym((item && (item.symbol || item.name)) || "?") || "?").charAt(0);
+    var letter = Array.from(cleanSym((item && (item.symbol || item.name)) || "?") || "?")[0] || "?";
     var src = (item && item.logo) || "";
     var extra = cls ? " " + cls : "";
     if (src) {
@@ -117,6 +121,49 @@
     if (/liq|lp\b|rug|mint|freeze|unlock|holder|top\s*10|market cap|mcap|bundled|snipe|liquidity|score|too weak|quality/i.test(why)) return true;
     if (/already up|pool age|cooldown|repeat|banned/i.test(why)) return false;
     return !!(item && item.ok === false);
+  }
+
+  /* v83: short human kill/skip reasons that fit one line (no "x p…" truncation). */
+  function kfmt(v) {
+    var n = Number(String(v).replace(/[$,]/g, ""));
+    if (!Number.isFinite(n)) return String(v);
+    if (n >= 1e6) return "$" + (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
+    if (n >= 1000) return "$" + Math.round(n / 1000) + "k";
+    return "$" + Math.round(n);
+  }
+  function shortReason(why) {
+    var w = String(why || "").replace(/\s+/g, " ").trim();
+    if (!w) return "";
+    var m;
+    if ((m = w.match(/^pool age\s*([\d.]+)m/i))) return "too old " + Math.round(Number(m[1])) + "m";
+    if (/pool age/i.test(w)) return "pool age ?";
+    if ((m = w.match(/(?:market cap|mcap)\s*\$?([\d,.]+)\s*<\s*\$?([\d,.]+)/i))) return "mcap " + kfmt(m[1]) + " < " + kfmt(m[2]);
+    if ((m = w.match(/liq(?:uidity)?\s*\$?([\d,.]+k?)\s*<\s*\$?([\d,.]+k?)/i))) return "liq < " + (/k$/i.test(m[2]) ? "$" + m[2] : kfmt(m[2]));
+    if ((m = w.match(/liq\w*\s*(?:dropp?ing|drop|fell|down)\s*-?([\d.]+)%/i))) return "liq −" + Math.round(Number(m[1])) + "%";
+    if (/liq\w*\s*gone|no liq|pool emptied|rug/i.test(w)) return "liq gone";
+    if ((m = w.match(/top\s*-?\s*10[^\d]*([\d.]+)%/i))) return "top 10 holders " + Math.round(Number(m[1])) + "%";
+    if (/mint/i.test(w) && /revok|authority|not/i.test(w)) return "mint not revoked";
+    if (/freeze/i.test(w)) return "freeze not revoked";
+    if (/dev\s*(sell|dump)/i.test(w)) return "dev selling";
+    if (/copy\s*cat|copycat|clone/i.test(w)) return "copycat";
+    if (/bundl/i.test(w)) return "bundled";
+    if (/snip/i.test(w)) return "snipers";
+    if ((m = w.match(/already up\s*([\d.]+)%/i))) return "already +" + Math.round(Number(m[1])) + "%";
+    if ((m = w.match(/already down\s*-?([\d.]+)%/i))) return "dumping −" + Math.round(Number(m[1])) + "%";
+    if ((m = w.match(/m5\s*(-?[\d.]+)%\s*<\s*([\d.]+)%/i))) return "5m " + Math.round(Number(m[1])) + "% < " + m[2] + "%";
+    if (/no\s*\d*m?\s*uptick/i.test(w)) return "no uptick";
+    if ((m = w.match(/max open\s*(\d+)/i))) return "max open " + m[1];
+    if (/pool cap/i.test(w)) return "pool full";
+    if (/0 buys|no buys/i.test(w)) return "no buyers";
+    if ((m = w.match(/buy share\s*([\d.]+)/i))) return "buys " + Math.round(Number(m[1]) * (Number(m[1]) <= 1 ? 100 : 1)) + "%";
+    if (/cooldown|repeat|seen/i.test(w)) return "cooldown";
+    if (/banned|blacklist/i.test(w)) return "banned";
+    w = w.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+    if (w.length > 22) {
+      var cut = w.slice(0, 22); var sp = cut.lastIndexOf(" ");
+      w = sp > 8 ? cut.slice(0, sp) : cut;
+    }
+    return w;
   }
 
   function fmtScore(v) {
@@ -238,7 +285,12 @@
       var sz = buySizeLabel(s);
       return sz ? ("size " + sz) : "size";
     }
-    if (row.key === "risk") return stopTrail(s).pill;
+    if (row.key === "risk") {
+      var stp = stopTrail(s);
+      var narrow = false; try { narrow = (root.innerWidth || 999) < 430; } catch (eW) {}
+      if (narrow && stp.stop != null && stp.trail != null) return "−" + stp.stop + "% · +" + stp.trail + "%";
+      return stp.pill;
+    }
     if (row.key === "logger") return fmtCount(counts.reasons || 0) + " reasons";
     return "";
   }
@@ -330,6 +382,9 @@
         var mark = num(p.mark_price) || num(p.mark) || (q && (num(q.price) || num(q.px)));
         var entry = num(p.entry) || num(p.avg) || num(p.entry_price);
         var pnlPct = num(p.pnl_pct);
+        if (pnlPct == null && typeof root.__buddyLiveMark === "function") {
+          try { var lm = root.__buddyLiveMark(p); if (lm && lm.pct != null && Number.isFinite(lm.pct)) pnlPct = lm.pct; } catch (eM) {}
+        }
         if ((pnlPct == null || (pnlPct === 0 && p.pnl_usd == null)) && mark != null && entry) {
           pnlPct = 100 * (mark - entry) / entry;
         }
@@ -369,7 +424,7 @@
     } else if (row.key === "filter") {
       if (st === "skipped" || item.ok === false) {
         tone = isKill(item) ? "kill" : "idle";
-        msg = (tone === "kill" ? "× " : "") + (why || (tone === "kill" ? "killed" : "skipped"));
+        msg = (tone === "kill" ? "× " : "") + (shortReason(why) || (tone === "kill" ? "killed" : "skipped"));
       } else {
         tone = "pass";
         msg = "passed rug";
@@ -379,11 +434,12 @@
       if (st === "skipped" || item.ok === false) {
         tone = isKill(item) ? "kill" : "idle";
         if (tone === "kill") {
-          if (/[<>]/.test(why) || /score/i.test(why)) msg = "× " + why;
-          else if (sc != null) msg = "× " + fmtScore(sc);
-          else msg = "× " + (why || "score failed");
+          if (/score/i.test(why) && sc != null) msg = "× " + fmtScore(sc);
+          else if (/[<>]/.test(why) && why.length <= 16) msg = "× " + why;
+          else if (sc != null && !why) msg = "× " + fmtScore(sc);
+          else msg = "× " + (shortReason(why) || "score failed");
         } else {
-          msg = why || "skipped";
+          msg = shortReason(why) || "skipped";
         }
       } else {
         tone = "pass";
@@ -393,20 +449,25 @@
       if (st === "bought") {
         tone = "pass";
         var sz = num(item.size_usd) || num(item.size);
-        var szLab = sz != null ? money(sz).replace("+", "") : (buySizeLabel(s) || "");
-        msg = "buy " + szLab;
+        if (sz == null) { var bl = buySizeLabel(s); if (bl) sz = num(bl.replace(/[$,]/g, "")); }
+        var szLab = sz != null ? "$" + (Math.abs(sz - Math.round(sz)) < 0.005 ? String(Math.round(sz)) : sz.toFixed(2)) : (buySizeLabel(s) || "");
+        var bal = num(s.balance);
+        msg = "buy " + szLab + (sz != null && bal && bal > 0 ? " · " + Math.max(1, Math.round(100 * sz / bal)) + "%" : "");
       } else {
         showLogo = false;
         var pnl = num(item.pnl_usd);
         tone = pnl == null ? "idle" : pnl >= 0 ? "pass" : "kill";
-        msg = "last " + (pnl != null ? money(Math.round(pnl)) : "sold") + " · " + sym;
+        var amt = pnl != null ? (Math.abs(pnl) >= 10 ? money(Math.round(pnl)) : money(Math.round(pnl * 100) / 100)) : "sold";
+        var lastHtml = '<span class="pipe-coin pipe-last tone-' + tone + '"><span class="pipe-msg">' +
+          '<span class="pipe-last-k">last </span><b class="pipe-last-v">' + esc(amt + " · " + sym) + "</b></span></span>";
+        return { html: lastHtml, sig: [row.key, item.mint || sym, st, tone, amt].join("|") };
       }
     } else if (row.key === "logger") {
       showLogo = false;
       tone = "idle";
       var died = killRowOf(item);
       if (st === "sold") {
-        msg = (why ? "risk " + why + " → " : "risk → ") + "sold " + sym;
+        msg = "risk sold " + sym + (why ? " · " + shortReason(why) : "");
       } else if (st === "skipped" || item.ok === false) {
         msg = (died === "analyst" ? "analyst " : "filter ") + (isKill(item) ? "killed " : "skipped ") + sym;
       } else if (died === "analyst" || st === "passed_gates" || st === "picked") {
@@ -423,19 +484,19 @@
     }
 
     var html = '<span class="pipe-coin tone-' + tone + '">' +
-      (showLogo ? logoTag(item) : "") +
-      (row.key === "logger" || (row.key === "executor" && st !== "bought") ? "" : '<b class="pipe-sym">' + esc(sym) + "</b>") +
-      '<span class="pipe-msg">' + esc(msg) + "</span></span>";
+      (showLogo ? logoTag(item) : "") + '<span class="pipe-txt">' +
+      (row.key === "logger" || (row.key === "executor" && st !== "bought") ? "" : '<b class="pipe-sym' + (row.key === "filter" && tone === "kill" ? " struck" : "") + '">' + esc(sym) + "</b>") +
+      '<span class="pipe-msg">' + esc(msg) + "</span></span></span>";
     var sig = [row.key, item.mint || sym, st, tone, msg, item.logo || ""].join("|");
     return { html: html, sig: sig };
   }
 
   function holdingsHtml(holds) {
-    if (!holds || !holds.length) return { html: "", sig: "empty" };
+    if (!holds || !holds.length) return { html: '<span class="pipe-coin tone-idle"><span class="pipe-msg">no open risk</span></span>', sig: "empty" };
     var html = '<span class="pipe-holds">' + holds.slice(0, 4).map(function (h) {
       var p = num(h.pnl_pct);
       var tone = p == null || Math.abs(p) < 0.05 ? "idle" : p > 0 ? "pass" : "kill";
-      var label = p == null ? "—" : pct(p);
+      var label = p == null ? "…" : pct(p);
       return '<span class="pipe-hold tone-' + tone + '">' + logoTag(h) + "<em>" + esc(label) + "</em></span>";
     }).join("") + (holds.length > 4 ? '<span class="pipe-hold-more">+' + (holds.length - 4) + "</span>" : "") + "</span>";
     var sig = holds.map(function (h) { return (h.symbol || "") + (h.pnl_pct == null ? "" : Number(h.pnl_pct).toFixed(2)); }).join("|");
@@ -450,8 +511,8 @@
     var titleText = "Desk · " + STAGES.length + " agents";
     var traded = counts.buys || 0;
     var countsHtml = '<span class="pipe-scanned">' + (counts.pairs || 0).toLocaleString("en-US") +
-      ' scanned</span><span class="pipe-traded"><i class="pipe-traded-dot" aria-hidden="true"></i>' +
-      traded + " traded</span>";
+      ' scanned</span><span class="pipe-sep" aria-hidden="true">·</span><span class="pipe-traded' + (traded > 0 ? " has" : "") + '">' +
+      traded.toLocaleString("en-US") + " traded</span>";
     var holds = openPositions(s);
     var last = lastTrade(s, items);
 
@@ -461,7 +522,7 @@
       if (row.key === "risk") ev = holdingsHtml(holds);
       else if (row.key === "executor") {
         var buying = latestOn(items, row);
-        if (buying && buying.stage === "bought") ev = coinHtml(buying, row, s);
+        if (buying && buying.stage === "bought" && (!last || (num(buying.ts) || 0) >= (num(last.ts) || 0))) ev = coinHtml(buying, row, s);
         else ev = last ? coinHtml(last, row, s) : coinHtml(null, row, s);
       } else {
         ev = coinHtml(latestOn(items, row), row, s);
@@ -546,8 +607,9 @@
             var bits = String(pack.ev.sig || "").split("|");
             var stg = bits[2] || "";
             var tone = bits[3] || "";
-            var action = (tone === "kill" && (row.key === "filter" || row.key === "analyst")) ||
-              (row.key === "executor" && stg === "bought");
+            /* v83: every real change lights the row: red killed, green passed/bought, grey skipped/new */
+            var action = true;
+            el.setAttribute("data-tone", tone === "kill" ? "kill" : tone === "pass" ? "pass" : "idle");
             if (action) {
               el.classList.remove("pipe-flash");
               void el.offsetWidth;
@@ -669,26 +731,45 @@
     }
     var have = {};
     Array.prototype.forEach.call(host.children, function (el) { have[el.getAttribute("data-id") || ""] = el; });
-    var next = document.createDocumentFragment();
-    var firstNew = true;
-    prepared.forEach(function (r) {
-      var existing = have[r.id];
-      if (existing) {
-        next.appendChild(existing);
-        firstNew = false;
-        return;
-      }
-      var div = document.createElement("div");
-      div.className = "lg-row tone-" + r.tone + (firstNew && !logSeen[r.id] && !reduceMotion ? " lg-in" : "");
-      div.setAttribute("data-id", r.id);
-      if (r.mint) div.setAttribute("data-mint", r.mint);
-      div.innerHTML = '<span class="lg-time">' + esc(hm(r.ts)) + '</span><span class="lg-body">' + esc(r.body) + "</span>";
-      next.appendChild(div);
-      logSeen[r.id] = 1;
-      firstNew = false;
+    /* v83: reconcile in place. Old code emptied the list and re-appended every row each 1s tick,
+       which restarted the slide-in on rows that kept "lg-in" (flicker) and never slid the list down.
+       Now: new lines insert at the top and slide in, older lines glide down (FLIP), nothing else re-mounts. */
+    var hadRows = host.children.length > 0;
+    var keep = {};
+    prepared.forEach(function (r) { keep[r.id] = 1; });
+    Array.prototype.slice.call(host.children).forEach(function (el) {
+      if (!keep[el.getAttribute("data-id") || ""]) el.remove();
     });
-    host.innerHTML = "";
-    host.appendChild(next);
+    var tops = [];
+    Array.prototype.forEach.call(host.children, function (el) { tops.push([el, el.offsetTop]); });
+    prepared.forEach(function (r, i) {
+      var el = have[r.id];
+      if (!el || !el.parentNode) {
+        el = document.createElement("div");
+        el.className = "lg-row tone-" + r.tone;
+        el.setAttribute("data-id", r.id);
+        if (r.mint) el.setAttribute("data-mint", r.mint);
+        el.innerHTML = '<span class="lg-time">' + esc(hm(r.ts)) + '</span><span class="lg-body">' + esc(r.body) + "</span>";
+        if (hadRows && !logSeen[r.id] && !reduceMotion) {
+          el.classList.add("lg-in");
+          (function (node) { setTimeout(function () { node.classList.remove("lg-in"); }, 450); })(el);
+        }
+        logSeen[r.id] = 1;
+      }
+      var at = host.children[i];
+      if (at !== el) host.insertBefore(el, at || null);
+    });
+    tops.forEach(function (pair) {
+      var el = pair[0];
+      if (!el.parentNode) return;
+      var d = pair[1] - el.offsetTop;
+      if (!d) return;
+      el.style.transition = "none";
+      el.style.transform = "translateY(" + d + "px)";
+      void el.offsetWidth;
+      el.style.transition = "transform 260ms ease-out";
+      el.style.transform = "";
+    });
   }
 
   function renderReasons(s) {
