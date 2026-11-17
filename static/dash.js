@@ -1,6 +1,6 @@
-/* Buddy dashboard v79 — live agent pipeline card matching William's ref5 video.
-   Driven by state.pipeline (and dashboard fallbacks). Hard-cut instant row updates.
-   Poll ~1s via MQTT snap + raw.githubusercontent fallback in app.js. */
+/* Buddy dashboard v80 — Desk card matches cmp2.mov (pixel-faithful, no green top line).
+   Driven by real state.pipeline / pipe_counts. Mid-column fade, pill pulse, row flash.
+   Live via MQTT snap; GitHub is fallback only. */
 (function (root) {
   "use strict";
 
@@ -36,7 +36,7 @@
     filter: '<polygon points="3,4 21,4 14,13 14,19 10,21 10,13"/>',
     analyst: '<path d="M12 3 4 7v6c0 5 3.5 7.5 8 9 4.5-1.5 8-4 8-9V7z"/><path d="m9 12 2 2 4-4"/>',
     executor: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
-    risk: '<path d="M12 21s8-4.2 8-10V6l-8-3-8 3v5c0 5.8 8 10 8 10z"/>',
+    risk: '<path d="M5 17a7 7 0 1 1 14 0"/><path d="M12 17l4.2-6"/>',
     logger: '<path d="M6 4h12v16H6z"/><path d="M9 8h6M9 12h6M9 16h4"/>'
   };
 
@@ -217,7 +217,7 @@
         return {
           stop: stop,
           trail: trail,
-          pill: (stop != null ? "−" + String(stop) + "%" : "") + (stop != null && trail != null ? " · " : "") + (trail != null ? "+" + String(trail) + "%" : ""),
+          pill: (stop != null ? "−" + String(stop) + "%" : "") + (stop != null && trail != null ? " · trail " : "") + (trail != null ? "+" + String(trail) + "%" : ""),
           sub: (stop != null ? "−" + String(stop) + "% stop" : "stop") + " · trail"
         };
       }
@@ -393,12 +393,13 @@
       if (st === "bought") {
         tone = "pass";
         var sz = num(item.size_usd) || num(item.size);
-        msg = "buy " + (sz != null ? money(sz).replace("+", "") : (buySizeLabel(s) || ""));
+        var szLab = sz != null ? money(sz).replace("+", "") : (buySizeLabel(s) || "");
+        msg = "buy " + szLab;
       } else {
+        showLogo = false;
         var pnl = num(item.pnl_usd);
         tone = pnl == null ? "idle" : pnl >= 0 ? "pass" : "kill";
         msg = "last " + (pnl != null ? money(Math.round(pnl)) : "sold") + " · " + sym;
-        /* last-line already includes the ticker; keep logo + ticker too for the video look when buying, not here */
       }
     } else if (row.key === "logger") {
       showLogo = false;
@@ -448,7 +449,9 @@
     var counts = deriveCounts(s, items);
     var titleText = "Desk · " + STAGES.length + " agents";
     var traded = counts.buys || 0;
-    var countsHtml = (counts.pairs || 0).toLocaleString("en-US") + " scanned · <b class='" + (traded > 0 ? "up" : "") + "'>" + traded + " traded</b>";
+    var countsHtml = '<span class="pipe-scanned">' + (counts.pairs || 0).toLocaleString("en-US") +
+      ' scanned</span><span class="pipe-traded"><i class="pipe-traded-dot" aria-hidden="true"></i>' +
+      traded + " traded</span>";
     var holds = openPositions(s);
     var last = lastTrade(s, items);
 
@@ -493,6 +496,15 @@
           "</div>";
         }).join("");
       }
+      var tradedEl = card.querySelector(".pipe-traded");
+      var tradedKey = (card.id || "card") + ":traded";
+      if (tradedEl && rowSig[tradedKey] != null && rowSig[tradedKey] !== traded && !reduceMotion) {
+        tradedEl.classList.remove("pipe-pulse");
+        void tradedEl.offsetWidth;
+        tradedEl.classList.add("pipe-pulse");
+      }
+      rowSig[tradedKey] = traded;
+
       STAGES.forEach(function (row) {
         var el = host.querySelector('.pipe-row[data-stage="' + row.key + '"]');
         if (!el) return;
@@ -500,12 +512,48 @@
         var sub = el.querySelector(".pipe-sub");
         if (sub && sub.textContent !== pack.sub) sub.textContent = pack.sub;
         var c = el.querySelector(".pipe-count");
-        if (c && c.textContent !== pack.badge) c.textContent = pack.badge;
+        var badgeKey = (card.id || "card") + ":badge:" + row.key;
+        if (c && c.textContent !== pack.badge) {
+          if (rowSig[badgeKey] != null && !reduceMotion) {
+            c.classList.remove("pipe-pulse");
+            void c.offsetWidth;
+            c.classList.add("pipe-pulse");
+          }
+          c.textContent = pack.badge;
+        }
+        rowSig[badgeKey] = pack.badge;
         var slot = el.querySelector(".pipe-events");
         var sigKey = (card.id || "card") + ":" + row.key;
         if (slot && rowSig[sigKey] !== pack.ev.sig) {
+          var prevSig = rowSig[sigKey];
           rowSig[sigKey] = pack.ev.sig;
-          slot.innerHTML = pack.ev.html || "";
+          var html = pack.ev.html || "";
+          var first = prevSig == null;
+          if (reduceMotion || first) {
+            if (slot._fadeTimer) { clearTimeout(slot._fadeTimer); slot._fadeTimer = null; }
+            slot.classList.remove("pipe-swap-out", "pipe-swap-in");
+            slot.innerHTML = html;
+          } else {
+            if (slot._fadeTimer) clearTimeout(slot._fadeTimer);
+            slot.classList.remove("pipe-swap-in");
+            slot.classList.add("pipe-swap-out");
+            slot._fadeTimer = setTimeout(function () {
+              slot.innerHTML = html;
+              slot.classList.remove("pipe-swap-out");
+              slot.classList.add("pipe-swap-in");
+              slot._fadeTimer = null;
+            }, 70);
+            var bits = String(pack.ev.sig || "").split("|");
+            var stg = bits[2] || "";
+            var tone = bits[3] || "";
+            var action = (tone === "kill" && (row.key === "filter" || row.key === "analyst")) ||
+              (row.key === "executor" && stg === "bought");
+            if (action) {
+              el.classList.remove("pipe-flash");
+              void el.offsetWidth;
+              el.classList.add("pipe-flash");
+            }
+          }
         }
       });
     });

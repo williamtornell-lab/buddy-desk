@@ -11,6 +11,16 @@
     ws: null, snap: null, lastAt: 0, connected: false, retry: 1500, timer: null, ping: null,
     id: "", hooks: {}, topic: "", cmdTopic: "", key: null, pendingAcks: {}, buf: new Uint8Array(0), useProto: true, gotConnack: false
   };
+  /* iOS Safari often rejects the MQTT WebSocket subprotocol and/or delivers
+     binary frames as Blob even when binaryType=arraybuffer. Prefer no
+     subprotocol on WebKit and always ingest Blob/ArrayBuffer safely. */
+  try {
+    var ua = String(root.navigator && navigator.userAgent || "");
+    var isIOS = /iP(hone|ad|od)/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    var isWebKit = /WebKit/.test(ua) && !/Chrome|CriOS|Chromium|Edg|OPR|FxiOS|Android/.test(ua);
+    if (isIOS || isWebKit) st.useProto = false;
+  } catch (eUa) {}
+
 
   function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ("0" + b.toString(16)).slice(-2); }).join(""); }
   function sha(text) { return root.crypto.subtle.digest("SHA-256", ENC.encode(text)); }
@@ -90,6 +100,31 @@
     if (st.hooks.onAck) st.hooks.onAck(ack, pend);
   }
 
+
+  function ingestWsData(data, cb) {
+    if (data == null) return;
+    if (data instanceof ArrayBuffer) { pushBytes(new Uint8Array(data), cb); return; }
+    if (typeof Blob !== "undefined" && data instanceof Blob) {
+      if (data.arrayBuffer) {
+        data.arrayBuffer().then(function (ab) { pushBytes(new Uint8Array(ab), cb); }).catch(function () {
+          var fr = new FileReader();
+          fr.onload = function () { if (fr.result) pushBytes(new Uint8Array(fr.result), cb); };
+          try { fr.readAsArrayBuffer(data); } catch (eR) {}
+        });
+      } else {
+        var fr2 = new FileReader();
+        fr2.onload = function () { if (fr2.result) pushBytes(new Uint8Array(fr2.result), cb); };
+        try { fr2.readAsArrayBuffer(data); } catch (eR2) {}
+      }
+      return;
+    }
+    if (data && data.buffer && typeof data.byteLength === "number") {
+      pushBytes(new Uint8Array(data.buffer, data.byteOffset || 0, data.byteLength), cb);
+      return;
+    }
+    if (typeof data === "string") pushBytes(ENC.encode(data), cb);
+  }
+
   async function open(id) {
     if (!root.crypto || !root.crypto.subtle || !ENC || !root.WebSocket) { emitStatus(); return; }
     var topic = "bdy/" + hex(await sha("buddy-live-topic|" + id)).slice(0, 32);
@@ -115,10 +150,7 @@
     st.ws = ws;
     ws.onopen = function () { ws.send(connectPkt()); };
     ws.onmessage = function (ev) {
-      var chunk = ev.data instanceof ArrayBuffer ? new Uint8Array(ev.data)
-        : (ev.data && ev.data.buffer) ? new Uint8Array(ev.data)
-        : ev.data ? ENC.encode(String(ev.data)) : new Uint8Array(0);
-      pushBytes(chunk, function (type, flags, body) {
+      ingestWsData(ev.data, function (type, flags, body) {
         if (type === 2) { // CONNACK
           if (body[1] !== 0) { ws.close(); return; }
           st.gotConnack = true;
@@ -185,6 +217,17 @@
     st.hooks = hooks || {};
     open(id);
     setInterval(emitStatus, 5000);
+    if (!st._visHook) {
+      st._visHook = true;
+      try {
+        document.addEventListener("visibilitychange", function () {
+          if (document.visibilityState !== "visible" || !st.id) return;
+          var stale = !st.connected || status() !== "live";
+          if (!stale) return;
+          try { if (st.ws) st.ws.close(); } catch (eV) {}
+        });
+      } catch (eH) {}
+    }
   }
   function stop() {
     clearTimeout(st.timer);

@@ -2550,7 +2550,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v79"; /* pipe-card-mqtt-v79 */
+      BuddySettings.hooks.version = "app v80"; /* pipe-card-mqtt-v80 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
@@ -2847,6 +2847,12 @@
     });
   }
 
+  /* Start MQTT immediately — do not wait for the 7–8MB state.json fetch.
+     iOS Safari otherwise sits on a stale GitHub snapshot and the Desk card looks static. */
+  try {
+    var bootTarget = dataPath();
+    if (bootTarget && bootTarget.kind === "live" && bootTarget.id) startLive(bootTarget.id);
+  } catch (eBoot) {}
   load();
   if (window.__buddyPoll) return;
   window.__buddyPoll = 1;
