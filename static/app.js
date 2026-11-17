@@ -152,7 +152,7 @@
       return s.positions
         .filter((p) => !isFomoRow(p))
         .map((p) => normalizeTrade(p, s, true))
-        .filter((t) => t.open || !t.closed_at);
+        .filter((t) => t.open);
     }
     return trades.filter((t) => t.open && !isFomoRow(t));
   }
@@ -1489,6 +1489,7 @@
         const res = await BuddyLive.sendCmdReliable(body, toastMeta || {}, { timeoutMs: sellWait ? 45000 : 5000, attempts: sellWait ? 2 : 4 });
         mqttOk = !!(res && res.ok);
         cid = res && res.cid;
+        if (res && res.ack) lastPostAck = res.ack;
         acked = !!(res && res.ok && res.ack);
       } catch (e) { /* fall through to ntfy */ }
     } else if (window.BuddyLive && typeof BuddyLive.sendCmd === "function") {
@@ -1516,6 +1517,7 @@
         try {
           const waited = await BuddyLive.waitAck(cid, 8000);
           acked = !!(waited && waited.ok);
+          if (waited && waited.ack) lastPostAck = waited.ack;
         } catch (e) { /* ignore */ }
       }
     }
@@ -1534,7 +1536,25 @@
   }
 
   let lastPostAcked = false;
+  let lastPostAck = null;
   const sellNames = Object.create(null);
+  function markSoldKeys(key) {
+    const now = Date.now();
+    const remember = (k) => { if (k) soldUi[k] = now; };
+    remember(key);
+    const raw = String(key || "").replace(/^(paper|real):/, "");
+    const mint = raw.split("~")[0];
+    if (String(key || "").indexOf("paper:") === 0 && mint) remember("paper:" + mint);
+    const rows = (state.data && (state.data.positions || state.data.trades)) || [];
+    rows.forEach((p) => {
+      const m = String((p && (p.mint || p.pos_key)) || "").split("~")[0];
+      if (mint && m === mint) remember(sellKeyOf(p));
+    });
+  }
+  function ackLooksSold(ack) {
+    const msg = String((ack && ack.msg) || "");
+    return /already sold|already_closed/i.test(msg);
+  }
   async function runDesk(action) {
     try {
       if (action.type === "cmd") {
@@ -1588,25 +1608,33 @@
         const nm = String(action.name || "").replace(/^\$/, "");
         const mint = key.replace(/^(paper|real):/, "").split("~")[0];
         if (mint && nm) sellNames[mint.slice(0, 8)] = nm;
+        /* Hide immediately so a missed ack / already-sold reply cannot bounce the card back. */
+        markSoldKeys(key);
         if (state.data) render();
         lastPostAcked = false;
+        lastPostAck = null;
         const slow = window.setTimeout(() => showToast("Selling " + (nm || "position") + "… desk busy, still waiting", false), 8000);
         let ok = false;
         try { ok = await postDesk("sell:" + key, { toast: "Sold " + (nm || "") }); } finally { window.clearTimeout(slow); }
-        if (ok && !lastPostAcked) {
-          // Sent but no ack yet: keep the card in "selling…"; the next snapshot drops it once the desk closes it.
+        const ack = lastPostAck;
+        const already = ackLooksSold(ack);
+        const ackFail = !!(ack && ack.ok === false && !already);
+        if (ok && !lastPostAcked && !already) {
+          // Sent but no ack yet: keep the card hidden; the next snapshot confirms the close.
           showToast("Sell sent · waiting for desk", false);
           if (state.data) render();
           window.setTimeout(load, 5000);
           return;
         }
-        if (!ok) {
+        if (!ok || ackFail) {
           delete sellingUi[key];
-          showToast("Sell failed", false);
+          delete soldUi[key];
+          showToast((ack && ack.msg) || "Sell failed", false);
           if (state.data) render();
         } else {
           delete sellingUi[key];
-          soldUi[key] = Date.now();
+          markSoldKeys(key);
+          if (already) showToast("Already sold", false);
           if (state.data) render();
           window.setTimeout(load, 800);
         }
@@ -2704,8 +2732,10 @@
     const ok = e.target && e.target.closest && e.target.closest("#modeConfirmOk");
     if (!ok) return;
     if (!pendingDesk) return;
+    const downRaw = lastDown.el && lastDown.el.nodeType === 3 ? lastDown.el.parentElement : lastDown.el;
+    const downOnOk = !!(downRaw && downRaw.closest && downRaw.closest("#modeConfirmOk") && lastDown.at > confirmOpenedAt);
     if (Date.now() < confirmArmedAt ||
-        (pendingDesk.type === "sell" && !(lastDown.el && lastDown.el.closest && lastDown.el.closest("#modeConfirmOk") && lastDown.at > confirmOpenedAt))) {
+        (pendingDesk.type === "sell" && !downOnOk)) {
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -2941,6 +2971,12 @@
       onAck: (ack, pend) => {
         let msg = (ack && ack.msg) || (pend && pend.toast) || "Desk got it";
         msg = String(msg).replace(/^Sold ([1-9A-HJ-NP-Za-km-z]{8,})/, (m, p) => "Sold " + (sellNames[p.slice(0, 8)] || p.slice(0, 6)));
+        if (ackLooksSold(ack)) msg = "Already sold";
+        if (pend && /^sell:/i.test(String(pend.cmd || pend.toast || ""))) {
+          const cmd = String(pend.cmd || "");
+          const k = cmd.toLowerCase().indexOf("sell:") === 0 ? cmd.slice(5).trim() : "";
+          if (k && (ack && ack.ok || ackLooksSold(ack))) markSoldKeys(k);
+        }
         showToast(msg, false);
         if (state.data) render();
         window.setTimeout(load, 800);

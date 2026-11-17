@@ -495,7 +495,12 @@
       }
       return row;
     });
-    out.positions = livePos.concat(oldPos.filter(function (p) { return !isPaper(p); }));
+    /* Only replace paper opens when the desk sent the full open list.
+       A tick without `positions` used to wipe them; a missed `closed` row
+       used to leave a stale Sell now card after the desk had already exited. */
+    if (Array.isArray(snap.positions)) {
+      out.positions = livePos.concat(oldPos.filter(function (p) { return !isPaper(p); }));
+    }
     if (Array.isArray(s.trades)) {
       var trades = s.trades.map(function (t) { return t; });
       var same = function (t, r) { return (t.pos_key || t.mint) === (r.pos_key || r.mint) && Math.abs((Number(t.opened_at) || 0) - (Number(r.opened_at) || 0)) < 1; };
@@ -511,15 +516,32 @@
           if (String(trades[i].side_or_status || "").toLowerCase() === "open") trades[i] = Object.assign({}, trades[i], row);
         } else trades.push(row);
       });
-      (snap.positions || []).forEach(function (sp) {
-        if (trades.some(function (t) { return same(t, sp); })) return;
-        trades.unshift({
-          mint: sp.mint, name: sp.name, symbol: sp.symbol, side_or_status: "open", entry: sp.entry, exit: null,
-          size_usd: sp.size_usd, pnl_usd: null, pnl_pct: null, fees_usd: null, opened_at: sp.opened_at, closed_at: null,
-          exit_reason: null, strategy: sp.strategy, pos_key: sp.pos_key || undefined, sub_bot: sp.sub_bot || undefined, mode: sp.mode || "PAPER",
-          paper_mode: String(sp.strategy || "").replace(/^paper_mode:/, "") || undefined
+      if (Array.isArray(snap.positions)) {
+        var liveIds = {};
+        snap.positions.forEach(function (sp) {
+          liveIds[(sp.pos_key || sp.mint) + "#" + Number(sp.opened_at || 0)] = 1;
         });
-      });
+        var snapTs = Number(snap.ts) || (Date.now() / 1000);
+        trades = trades.map(function (t) {
+          if (!isPaper(t)) return t;
+          var st = String(t.side_or_status || t.status || "").toLowerCase();
+          if (st && st !== "open" && st !== "opening" && st !== "selling" && st !== "exiting") return t;
+          if (t.closed_at) return t;
+          var k = (t.pos_key || t.mint) + "#" + Number(t.opened_at || 0);
+          if (liveIds[k]) return t;
+          if ((Number(t.opened_at) || 0) > snapTs - 3) return t;
+          return Object.assign({}, t, { side_or_status: "closed", status: "closed", closed_at: t.closed_at || snapTs });
+        });
+        snap.positions.forEach(function (sp) {
+          if (trades.some(function (t) { return same(t, sp); })) return;
+          trades.unshift({
+            mint: sp.mint, name: sp.name, symbol: sp.symbol, side_or_status: "open", entry: sp.entry, exit: null,
+            size_usd: sp.size_usd, pnl_usd: null, pnl_pct: null, fees_usd: null, opened_at: sp.opened_at, closed_at: null,
+            exit_reason: null, strategy: sp.strategy, pos_key: sp.pos_key || undefined, sub_bot: sp.sub_bot || undefined, mode: sp.mode || "PAPER",
+            paper_mode: String(sp.strategy || "").replace(/^paper_mode:/, "") || undefined
+          });
+        });
+      }
       out.trades = trades;
     }
     if (Array.isArray(s.activity) && Array.isArray(snap.activity)) {
