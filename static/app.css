@@ -3231,3 +3231,83 @@ body:has(#app.desk-v76),
   #app.desk-v76 .lg-row { font-size: 13px !important; }
   #app.desk-v76 .lg-row.lg-in { animation: lg-in 0.25s ease-out; }
 }
+
+
+/* ===== v82 open-trade cards: stacked phone layout (fixes v78 3-col grid overlap) =====
+   The v78 rule gave .oc-main the 44px | 1fr | auto row grid meant for .trade,
+   so .oc-head was crushed into the 44px column and drew over the stats. */
+#app.desk-v76 .trade-row.open-card { display: block !important; }
+#app.desk-v76 .open-card .oc-main {
+  display: flex !important;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  padding: 0;
+}
+#app.desk-v76 .open-card .oc-head {
+  display: grid !important;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+#app.desk-v76 .open-card .oc-head .coin-logo { grid-column: 1; }
+#app.desk-v76 .open-card .oc-head .who { grid-column: 2; display: flex; flex-direction: column; min-width: 0; }
+#app.desk-v76 .open-card .oc-head .pnl-col {
+  grid-column: 3;
+  display: flex; flex-direction: column; align-items: flex-end;
+  text-align: right; white-space: nowrap; line-height: 1.2;
+  font-size: 17px; font-weight: 750; padding-top: 2px;
+}
+#app.desk-v76 .open-card .oc-head .pnl-col .pct { display: block; margin: 2px 0 0; font-size: 13px; }
+#app.desk-v76 .open-card .oc-name {
+  display: flex !important; flex-wrap: wrap !important; align-items: center;
+  gap: 5px 6px; min-width: 0; position: static;
+}
+#app.desk-v76 .open-card .oc-sym {
+  display: block; flex: 0 1 auto; min-width: 0; max-width: 100%;
+  white-space: normal; overflow-wrap: anywhere; font-size: 18px; line-height: 1.2;
+}
+#app.desk-v76 .open-card .oc-name .src-pill,
+#app.desk-v76 .open-card .oc-name .style-tag {
+  position: static; margin: 0; white-space: nowrap !important; font-size: 11px;
+}
+#app.desk-v76 .open-card .oc-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px; width: 100%; margin: 0;
+}
+#app.desk-v76 .open-card .oc-cell {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0;
+  padding: 9px 10px; border-radius: 12px;
+  background: #0d0d0e; border: 1px solid #222;
+}
+#app.desk-v76 .open-card .oc-cell i { font-size: 11.5px; color: var(--muted); }
+#app.desk-v76 .open-card .oc-cell b {
+  font-size: 15px; font-weight: 720; line-height: 1.2;
+  white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+#app.desk-v76 .open-card .oc-cell b.up { color: var(--green, #30d158); }
+#app.desk-v76 .open-card .oc-cell b.down { color: var(--red, #ff453a); }
+#app.desk-v76 .open-card .oc-spark { display: block; width: 100%; height: 48px; margin: 0; overflow: hidden; }
+#app.desk-v76 .open-card .oc-spark svg { display: block; width: 100%; height: 48px; }
+#app.desk-v76 .open-card .oc-meta {
+  display: flex !important; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 4px 12px; margin: 0; width: 100%; font-size: 13px;
+}
+#app.desk-v76 .open-card .oc-held,
+#app.desk-v76 .open-card .oc-fresh { font-size: 13px; color: var(--muted); margin: 0; }
+#app.desk-v76 .open-card .oc-links {
+  display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center;
+  gap: 8px; width: 100%; margin-top: 10px;
+}
+@media (max-width: 360px) {
+  #app.desk-v76 .open-card .oc-cell { padding: 8px 7px; }
+  #app.desk-v76 .open-card .oc-cell b { font-size: 13.5px; }
+}
+#app.desk-v76 .open-card .oc-spark svg * { vector-effect: non-scaling-stroke; }

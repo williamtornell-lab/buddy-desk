@@ -1144,16 +1144,17 @@
       coinLogoHtml(t.mint, t.symbol, t.name, null, pickImageUrl(t)) +
       '<span class="who">' +
       '<span class="oc-name"><span class="oc-sym">' + esc(displayTicker(t)) + "</span>" + pill + (window.BuddyStyles ? BuddyStyles.tagHtml(t, state.data) : "") + "</span>" +
-      '<span class="oc-meta">' +
-      '<span class="oc-fresh' + (fresh.stale ? " stale" : "") + '" title="' + esc(fresh.text) + '"><i aria-hidden="true"></i>' + esc(freshTxt) + "</span>" +
-      (heldTxt ? '<span class="oc-held" data-opened="' + heldAt + '">' + esc(heldTxt) + "</span>" : "") +
-      "</span>" +
       "</span>" + gainMarkup(m) +
       "</span>" +
       '<span class="oc-grid">' + cell("Entry", entry) + cell("Now", nowPx, nowTone) + cell("Value", value) + "</span>" +
       (m && m.samples && m.samples.length >= 2 && window.BuddyMarks && BuddyMarks.chartSvg
-        ? '<span class="oc-spark">' + BuddyMarks.chartSvg(m.samples) + "</span>"
+        ? '<span class="oc-spark">' + String(BuddyMarks.chartSvg(m.samples)).replace("<svg ", '<svg preserveAspectRatio="none" ') + "</span>"
         : "") +
+      /* v82: held timer + freshness on their own line under the chart */
+      '<span class="oc-meta">' +
+      (heldTxt ? '<span class="oc-held" data-opened="' + heldAt + '">' + esc(heldTxt) + "</span>" : "") +
+      '<span class="oc-fresh' + (fresh.stale ? " stale" : "") + '" title="' + esc(fresh.text) + '"><i aria-hidden="true"></i>' + esc(freshTxt) + "</span>" +
+      "</span>" +
       "</button>" +
       '<span class="oc-links">' +
       sellNowBtn(t) +
@@ -2550,7 +2551,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v81"; /* logger-mqtt-v81 */
+      BuddySettings.hooks.version = "app v82"; /* opencards-v82 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
