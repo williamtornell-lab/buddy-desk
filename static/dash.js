@@ -407,6 +407,8 @@
     if (!item) {
       var idle = row.key === "scout" ? "Pump.fun + Raydium…"
         : row.key === "executor" ? "nothing passed yet"
+        : row.key === "filter" ? "no kills this minute"
+        : row.key === "analyst" ? "waiting for survivors"
         : "";
       if (!idle) return { html: "", sig: "empty" };
       return { html: '<span class="pipe-coin tone-idle"><span class="pipe-msg">' + esc(idle) + "</span></span>", sig: "idle:" + idle };

@@ -3563,3 +3563,5 @@ body:has(#app.desk-v76),
 /* v83 logger: new line slides in from the top, older lines glide down (FLIP in dash.js) */
 #app.desk-v76 .lg-row.lg-in { animation: lg-slide-in 0.32s ease-out !important; }
 @keyframes lg-slide-in { from { opacity: 0; transform: translateY(-12px); background: rgba(255,255,255,0.06); } to { opacity: 1; transform: none; background: transparent; } }
+#app.desk-v76 .pipe-card .pipe-txt .pipe-sym { max-width: 100%; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#app.desk-v76 .pipe-card .pipe-coin, #app.desk-v76 .pipe-card .pipe-txt { min-width: 0; max-width: 100%; }
