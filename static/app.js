@@ -1981,13 +1981,25 @@
       /* v83: a tick without a mark keeps that position's last known P&L (no balance flicker) */
       const k = String(t.pos_key || t.mint || t.id || "");
       state._uCache = state._uCache || {};
-      if (m && m.unrealized != null && Number.isFinite(m.unrealized)) {
+      const mAt = toUnix(t.mark_fetched_at) || 0;
+      const prevU = k ? state._uCache[k] : null;
+      if (m && m.unrealized != null && Number.isFinite(m.unrealized) && prevU && prevU.mAt && Date.now() - prevU.at < 20000 && (!mAt || mAt < prevU.mAt)) {
+        /* v83: the 15s full snapshot can carry an older mark than the 1s live feed — never step back in time */
+        sum += prevU.v; any = true;
+      } else if (m && m.unrealized != null && Number.isFinite(m.unrealized)) {
         sum += m.unrealized; any = true;
-        if (k) state._uCache[k] = { v: m.unrealized, at: Date.now() };
+        if (k) state._uCache[k] = { v: m.unrealized, at: Date.now(), mAt: mAt };
       } else if (k && state._uCache[k] && Date.now() - state._uCache[k].at < 120000) {
         sum += state._uCache[k].v; any = true;
       }
     });
+    if (!any && state._uCache) {
+      /* v83: a tick with no open rows/marks (snapshot swap) keeps the last 20s of live P&L instead of dropping to cash */
+      Object.keys(state._uCache).forEach((k) => {
+        const c = state._uCache[k];
+        if (c && Date.now() - c.at < 20000) { sum += c.v; any = true; }
+      });
+    }
     return any ? sum : null;
   }
 

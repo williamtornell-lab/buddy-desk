@@ -487,7 +487,8 @@
         row.mark_price = sp.price; row.mark_fetched_at = sp.price_ts; row.mark_source = sp.price_src || "desk_live";
         if (sp.pair) row.mark_pair = sp.pair;
         mk[spId] = { p: sp.price, t: sp.price_ts, src: row.mark_source, pair: row.mark_pair, at: Date.now() };
-      } else if (row.mark_price == null && mk[spId] && Date.now() - mk[spId].at < 120000) {
+      } else if (mk[spId] && Date.now() - mk[spId].at < 120000 &&
+                 (row.mark_price == null || Number(row.mark_fetched_at || 0) < Number(mk[spId].t || 0))) {
         /* v83: a tick without a price keeps the last live mark (no "—" / balance flicker) */
         row.mark_price = mk[spId].p; row.mark_fetched_at = mk[spId].t; row.mark_source = mk[spId].src;
         if (mk[spId].pair) row.mark_pair = mk[spId].pair;
