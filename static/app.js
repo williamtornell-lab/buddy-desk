@@ -9,6 +9,7 @@
   };
   const restartUi = Object.create(null);
   const sellingUi = Object.create(null);
+  const soldUi = Object.create(null); /* v83: sold cards disappear right after the desk ack */
 
   function esc(v) {
     return String(v ?? "").replace(/[&<>"']/g, (c) => ({
@@ -1485,7 +1486,7 @@
     if (window.BuddyLive && typeof BuddyLive.sendCmdReliable === "function") {
       try {
         const sellWait = String(body || "").toLowerCase().indexOf("sell:") === 0;
-        const res = await BuddyLive.sendCmdReliable(body, toastMeta || {}, { timeoutMs: sellWait ? 25000 : 5000, attempts: sellWait ? 2 : 4 });
+        const res = await BuddyLive.sendCmdReliable(body, toastMeta || {}, { timeoutMs: sellWait ? 45000 : 5000, attempts: sellWait ? 2 : 4 });
         mqttOk = !!(res && res.ok);
         cid = res && res.cid;
         acked = !!(res && res.ok && res.ack);
@@ -1518,11 +1519,12 @@
         } catch (e) { /* ignore */ }
       }
     }
+    lastPostAcked = acked;
     if (!mqttOk && !ntfyOk && !acked) throw new Error("bad status");
     return acked || mqttOk || ntfyOk;
     })();
     try {
-      return await withTimeout(work, 7000, "timeout");
+      return await withTimeout(work, String(body || "").toLowerCase().indexOf("sell:") === 0 ? 100000 : 7000, "timeout");
     } catch (err) {
       if (String(err && err.message || err).indexOf("timeout") >= 0) {
         showToast("No reply — try again", false);
@@ -1531,6 +1533,8 @@
     }
   }
 
+  let lastPostAcked = false;
+  const sellNames = Object.create(null);
   async function runDesk(action) {
     try {
       if (action.type === "cmd") {
@@ -1580,14 +1584,30 @@
       }
       if (action.type === "sell") {
         const key = String(action.mint || "");
-        if (key) sellingUi[key] = { until: Date.now() + 30000 };
+        if (key) sellingUi[key] = { until: Date.now() + 120000 };
+        const nm = String(action.name || "").replace(/^\$/, "");
+        const mint = key.replace(/^(paper|real):/, "").split("~")[0];
+        if (mint && nm) sellNames[mint.slice(0, 8)] = nm;
         if (state.data) render();
-        const ok = await postDesk("sell:" + key, { toast: "Sold" });
+        lastPostAcked = false;
+        const slow = window.setTimeout(() => showToast("Selling " + (nm || "position") + "… desk busy, still waiting", false), 8000);
+        let ok = false;
+        try { ok = await postDesk("sell:" + key, { toast: "Sold " + (nm || "") }); } finally { window.clearTimeout(slow); }
+        if (ok && !lastPostAcked) {
+          // Sent but no ack yet: keep the card in "selling…"; the next snapshot drops it once the desk closes it.
+          showToast("Sell sent · waiting for desk", false);
+          if (state.data) render();
+          window.setTimeout(load, 5000);
+          return;
+        }
         if (!ok) {
           delete sellingUi[key];
           showToast("Sell failed", false);
           if (state.data) render();
         } else {
+          delete sellingUi[key];
+          soldUi[key] = Date.now();
+          if (state.data) render();
           window.setTimeout(load, 800);
         }
         return;
@@ -2253,7 +2273,7 @@
     }
 
     state.trades = tradesOf(s);
-    const opens = opensForMode(s, state.trades, live);
+    const opens = opensForMode(s, state.trades, live).filter((t) => !(soldUi[sellKeyOf(t)] && Date.now() - soldUi[sellKeyOf(t)] < 90000));
     state.rows = state.trades.slice();
     opens.forEach((t) => {
       if (state.rows.indexOf(t) < 0) state.rows.push(t);
@@ -2649,6 +2669,7 @@
   function onSellPointer(e) {
     const sell = e.target && e.target.closest && e.target.closest("[data-sell]");
     if (!sell) return;
+    if (Date.now() - confirmOpenedAt < 1500) { e.preventDefault(); e.stopPropagation(); return; }
     e.preventDefault();
     e.stopPropagation();
     if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
@@ -2656,13 +2677,35 @@
   }
   // Capture phase: Sell now must not be swallowed by the trade card or other hooks.
   // pointerup covers phones that drop the generated click; confirmArmedAt blocks a ghost OK tap.
+  /* v83: the open cards re-render every ~1s from MQTT. A tap whose pointerup/click lands after the
+     re-render hit a detached button and was lost ("Sell now isn't working"). Open the confirm on
+     pointerdown/touchstart instead, and swallow the matching up/click. */
+  let confirmOpenedAt = 0;
+  let lastDown = { el: null, at: 0 };
+  document.addEventListener("pointerdown", (e) => { lastDown = { el: e.target, at: Date.now() }; }, true);
+  document.addEventListener("touchstart", (e) => { lastDown = { el: e.target, at: Date.now() }; }, { capture: true, passive: true });
+  function onSellDown(e) {
+    const sell = e.target && e.target.closest && e.target.closest("[data-sell]");
+    if (!sell) return;
+    if (e.type === "touchstart" && Date.now() - confirmOpenedAt < 600) return;
+    if (e.cancelable) e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+    if (Date.now() - confirmOpenedAt < 600) return;
+    confirmOpenedAt = Date.now();
+    askSellFrom(sell);
+    confirmArmedAt = Date.now() + 450;
+  }
+  document.addEventListener("pointerdown", onSellDown, true);
+  document.addEventListener("touchstart", onSellDown, { capture: true, passive: false });
   document.addEventListener("click", onSellPointer, true);
   document.addEventListener("pointerup", onSellPointer, true);
   function onConfirmOk(e) {
     const ok = e.target && e.target.closest && e.target.closest("#modeConfirmOk");
     if (!ok) return;
     if (!pendingDesk) return;
-    if (Date.now() < confirmArmedAt) {
+    if (Date.now() < confirmArmedAt ||
+        (pendingDesk.type === "sell" && !(lastDown.el && lastDown.el.closest && lastDown.el.closest("#modeConfirmOk") && lastDown.at > confirmOpenedAt))) {
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -2896,7 +2939,8 @@
       },
       onStatus: setLiveDot,
       onAck: (ack, pend) => {
-        const msg = (ack && ack.msg) || (pend && pend.toast) || "Desk got it";
+        let msg = (ack && ack.msg) || (pend && pend.toast) || "Desk got it";
+        msg = String(msg).replace(/^Sold ([1-9A-HJ-NP-Za-km-z]{8,})/, (m, p) => "Sold " + (sellNames[p.slice(0, 8)] || p.slice(0, 6)));
         showToast(msg, false);
         if (state.data) render();
         window.setTimeout(load, 800);
