@@ -410,6 +410,13 @@
     out.dashboard = dash;
   }
 
+  function applyLog(out, snap) {
+    if (!Array.isArray(snap && snap.log)) return;
+    var dash = (out.dashboard && typeof out.dashboard === "object") ? Object.assign({}, out.dashboard) : {};
+    dash.log = snap.log;
+    out.dashboard = dash;
+  }
+
   function merge(s, snap) {
     if (!s || !snap || !snap.ts) return s;
     var isDiff = snap.kind === "diff";
@@ -462,6 +469,7 @@
         }
       }
       applyPipeCounts(out, snap);
+      applyLog(out, snap);
       if (Array.isArray(snap.waiting)) out.waiting = snap.waiting;
       return out;
     }
@@ -520,6 +528,7 @@
       }
     }
     applyPipeCounts(out, snap);
+    applyLog(out, snap);
     if (Array.isArray(snap.waiting)) out.waiting = snap.waiting;
     return out;
   }

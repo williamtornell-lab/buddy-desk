@@ -2550,7 +2550,7 @@
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v80"; /* pipe-card-mqtt-v80 */
+      BuddySettings.hooks.version = "app v81"; /* logger-mqtt-v81 */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
@@ -2810,6 +2810,7 @@
     const hasOpen = realOpen || paperOpen;
     dot.hidden = status === "off" || !state.data || state.fixture;
     dot.className = "live-dot " + (status === "live" ? "on" : "fb");
+    dot.textContent = status === "live" ? "LIVE" : "FALLBACK";
     dot.title = status === "live"
       ? "Live: desk state, prices, value and P&L every 1s"
       : (hasOpen ? "Live stream offline: prices polled every 1s, published state as it arrives" : "Live stream offline: published desk state as it arrives");

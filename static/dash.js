@@ -1,4 +1,4 @@
-/* Buddy dashboard v80 — Desk card matches cmp2.mov (pixel-faithful, no green top line).
+/* Buddy dashboard v81 — Desk card + live Logger (MQTT log, no SCANNER kills, dedupe).
    Driven by real state.pipeline / pipe_counts. Mid-column fade, pill pulse, row flash.
    Live via MQTT snap; GitHub is fallback only. */
 (function (root) {
@@ -559,7 +559,54 @@
     });
   }
 
-  /* ---------- logger: insert at top, 0.25s slide+fade ---------- */
+  /* ---------- logger: MQTT-driven, slide in at top, no SCANNER kills ---------- */
+  function mapLogAgent(agent, text, reason, tone) {
+    var a = String(agent || "").toLowerCase();
+    var blob = (text || "") + " " + (reason || "");
+    if (a === "scanner" || a === "scout") {
+      if (tone === "kill" || /kill/i.test(blob)) return "filter";
+      return "scout";
+    }
+    if (a === "auditor" || a === "skipped") return "filter";
+    if (a === "sold" || a === "bought" || a === "risk") return "executor";
+    if (a === "passed_rug" || a === "passed_gates" || a === "picked") {
+      return a === "passed_rug" ? "filter" : "analyst";
+    }
+    if (a === "filter" || a === "analyst" || a === "executor" || a === "logger") return a;
+    if (tone === "kill") return "filter";
+    return a || "filter";
+  }
+
+  function logRunningText(r) {
+    var agent = mapLogAgent(r.agent, r.text, r.reason, r.tone);
+    var sym = r.symbol ? "$" + r.symbol : "";
+    var text = String(r.text || "").replace(/\s+/g, " ").trim();
+    var reason = String(r.reason || "").replace(/\s+/g, " ").trim();
+    if (/^(filter|analyst|executor|scout)\s/i.test(text)) {
+      return text + (sym && text.indexOf(sym) < 0 ? " " + sym : "");
+    }
+    if (agent === "filter") {
+      if (r.tone === "pass" || /passed/i.test(text)) return ("filter " + (text || "passed rug") + (sym ? " " + sym : "")).trim();
+      return ("filter killed" + (sym ? " " + sym : "")).trim();
+    }
+    if (agent === "analyst") {
+      if (r.tone === "pass" || /passed/i.test(reason)) {
+        if (/score/i.test(text)) return ("analyst " + text + (sym ? " " + sym : "")).trim();
+        return ("analyst passed" + (sym ? " " + sym : "")).trim();
+      }
+      if (/score/i.test(text)) return ("analyst " + text + (sym ? " " + sym : "")).trim();
+      return ("analyst killed" + (sym ? " " + sym : "")).trim();
+    }
+    if (agent === "executor") {
+      var ev = text || reason || "update";
+      ev = ev.replace(/^executor\s+/i, "");
+      return ("executor " + ev + (sym && ev.indexOf(sym) < 0 ? " " + sym : "")).trim();
+    }
+    if (agent === "scout" || /new pair/i.test(text)) return "";
+    var body = text || reason || "";
+    return (agent ? agent + " " : "") + body + (sym && body.indexOf(sym) < 0 ? " " + sym : "");
+  }
+
   function renderLogger(s) {
     var host = $("#loggerFeed");
     var card = $("#loggerCard");
@@ -573,10 +620,15 @@
         text: text || "",
         reason: reason || "",
         tone: tone || "idle",
-        mint: mint || "",
-        id: (ts || "") + "|" + (mint || "") + "|" + (text || "") + "|" + (reason || "")
+        mint: mint || ""
       });
     }
+    var log = (s.dashboard && s.dashboard.log) || [];
+    log.forEach(function (line) {
+      if (!line) return;
+      if (typeof line === "string") add(0, "logger", "", line, line, "idle", "");
+      else add(line.ts, line.agent || line.stage || "logger", line.symbol, line.text || line.msg || line.reason, line.reason, line.tone, line.mint);
+    });
     pipelineOf(s).forEach(function (it) {
       if (!it.reason && it.stage !== "sold" && it.stage !== "skipped" && it.stage !== "bought") return;
       var row = stageKeyOf(it);
@@ -584,27 +636,42 @@
       var tone = (it.stage === "bought") ? "buy" : (it.stage === "sold" ? ((num(it.pnl_usd) || 0) >= 0 ? "pass" : "kill") : (it.ok === false || it.stage === "skipped" ? (isKill(it) ? "kill" : "idle") : "idle"));
       add(it.ts, row, it.symbol, ev, it.reason, tone, it.mint);
     });
-    var log = (s.dashboard && s.dashboard.log) || [];
-    log.forEach(function (line) {
-      if (!line) return;
-      if (typeof line === "string") add(0, "logger", "", line, line, "idle", "");
-      else add(line.ts, line.agent || line.stage || "logger", line.symbol, line.text || line.msg || line.reason, line.reason, line.tone, line.mint);
-    });
-    rows.sort(function (a, b) { return b.ts - a.ts; });
+    var prepared = [];
     var seen = {};
-    rows = rows.filter(function (r) { if (seen[r.id]) return false; seen[r.id] = 1; return true; }).slice(0, 12);
-    if (card) card.hidden = rows.length === 0;
-    if (!rows.length) { host.innerHTML = ""; return; }
+    rows.sort(function (a, b) { return b.ts - a.ts; });
+    rows.forEach(function (r) {
+      r.agent = mapLogAgent(r.agent, r.text, r.reason, r.tone);
+      r.body = logRunningText(r);
+      if (!r.body) return;
+      var key = [Math.round(r.ts), r.agent, r.symbol, r.body.toLowerCase()].join("|");
+      if (seen[key]) return;
+      seen[key] = 1;
+      r.id = key;
+      prepared.push(r);
+    });
+    prepared = prepared.slice(0, 12);
+    if (card) card.hidden = prepared.length === 0;
+    var liveEl = $("#loggerLive");
+    if (liveEl) {
+      var st = "fallback";
+      try { if (root.BuddyLive && BuddyLive.status) st = BuddyLive.status() || "fallback"; } catch (eL) {}
+      liveEl.hidden = false;
+      liveEl.textContent = st === "live" ? "live" : "fallback";
+      liveEl.className = "lg-live " + (st === "live" ? "on" : "fb");
+    }
+    if (!prepared.length) { host.innerHTML = ""; return; }
     var killed = $("#loggerKilled");
     if (killed) {
-      var n = ((s.dashboard || {}).killed) || rows.filter(function (r) { return r.tone === "kill"; }).length;
+      var n = ((s.dashboard || {}).killed);
+      if (n == null) n = ((s.dashboard || {}).pipe_counts || {}).killed;
+      if (n == null) n = prepared.filter(function (r) { return r.tone === "kill"; }).length;
       killed.textContent = n ? (Number(n).toLocaleString("en-US") + " killed") : "";
     }
     var have = {};
     Array.prototype.forEach.call(host.children, function (el) { have[el.getAttribute("data-id") || ""] = el; });
     var next = document.createDocumentFragment();
     var firstNew = true;
-    rows.forEach(function (r) {
+    prepared.forEach(function (r) {
       var existing = have[r.id];
       if (existing) {
         next.appendChild(existing);
@@ -614,10 +681,8 @@
       var div = document.createElement("div");
       div.className = "lg-row tone-" + r.tone + (firstNew && !logSeen[r.id] && !reduceMotion ? " lg-in" : "");
       div.setAttribute("data-id", r.id);
-      var body = r.text || r.reason || "";
-      if (r.symbol) body = (body ? body + " " : "") + "$" + r.symbol;
-      div.innerHTML = '<span class="lg-time">' + esc(hm(r.ts)) + '</span><span class="lg-ag ag-' + esc(r.agent) + '">' +
-        esc((r.agent || "").toUpperCase()) + '</span><span class="lg-body">' + esc(body) + "</span>";
+      if (r.mint) div.setAttribute("data-mint", r.mint);
+      div.innerHTML = '<span class="lg-time">' + esc(hm(r.ts)) + '</span><span class="lg-body">' + esc(r.body) + "</span>";
       next.appendChild(div);
       logSeen[r.id] = 1;
       firstNew = false;

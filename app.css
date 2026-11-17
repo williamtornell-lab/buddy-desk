@@ -3137,3 +3137,97 @@ body:has(#app.desk-v76),
     column-gap: 6px;
   }
 }
+
+
+/* ===== v81 logger + live/fallback + unclipped section heads ===== */
+#app.desk-v76 .live-dot.fb,
+#app.desk-v76 #liveDot.fb {
+  color: #FFB340 !important;
+  background: transparent;
+}
+#app.desk-v76 .live-dot.fb::before,
+#app.desk-v76 #liveDot.fb::before {
+  background: #FFB340 !important;
+  box-shadow: none !important;
+}
+#app.desk-v76 .dash-head {
+  overflow: visible;
+  align-items: center;
+  min-height: 24px;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+#app.desk-v76 .dash-head h2 {
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  overflow: visible;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+#app.desk-v76 #reasonsCard .dash-head h2,
+#app.desk-v76 #reasonsTitle {
+  overflow: visible !important;
+  text-overflow: clip;
+  line-height: 1.3;
+  padding-bottom: 2px;
+}
+#app.desk-v76 #home,
+#app.desk-v76 #insights,
+#app.desk-v76 #activity,
+#app.desk-v76 #agents,
+#app.desk-v76 #prefs {
+  contain: none;
+  overflow: visible;
+  padding-bottom: 12px;
+}
+#app.desk-v76 {
+  padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important;
+}
+#app.desk-v76 .lg-live {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: #FFB340;
+  margin-left: auto;
+}
+#app.desk-v76 .lg-live.on { color: #32D74B; }
+#app.desk-v76 .lg-live.fb { color: #FFB340; }
+#app.desk-v76 #loggerKilled { margin-left: 8px; }
+#app.desk-v76 .lg-feed { max-height: none; overflow: visible; }
+#app.desk-v76 .lg-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px !important;
+  line-height: 1.4;
+  color: #8E8E93;
+  background: transparent !important;
+  padding: 8px 0 !important;
+  border-top: 1px solid #222;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+#app.desk-v76 .lg-row:first-child { border-top: 0; }
+#app.desk-v76 .lg-time { color: #8E8E93; flex: 0 0 3.2em; font-variant-numeric: tabular-nums; }
+#app.desk-v76 .lg-body {
+  color: #8E8E93 !important;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#app.desk-v76 .lg-row.tone-kill .lg-body,
+#app.desk-v76 .lg-row.tone-pass .lg-body,
+#app.desk-v76 .lg-row.tone-buy .lg-body,
+#app.desk-v76 .lg-row.tone-idle .lg-body {
+  color: #8E8E93 !important;
+}
+#app.desk-v76 .lg-row.tone-buy { background: transparent !important; border-radius: 0; padding-left: 0; padding-right: 0; }
+#app.desk-v76 .lg-row.lg-in { animation: lg-in 0.25s ease-out; }
+@media (max-width: 640px) {
+  #app.desk-v76 .lg-row { font-size: 13px !important; }
+  #app.desk-v76 .lg-row.lg-in { animation: lg-in 0.25s ease-out; }
+}
