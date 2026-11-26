@@ -1,4 +1,4 @@
-/* Buddy Copy trading view (v86). Desk | Copy switch is still view-only and
+/* Buddy Copy trading view (v87). Desk | Copy switch is still view-only and
    never posts desk:on/off, copy:on/off (FOMO), or REAL arm commands.
    Copy-mode controls post copytrade:on|off and set:copytrade:... through the
    same authenticated confirm path as desk settings. Renders state.wallet_copy
@@ -22,8 +22,8 @@
 
   try { view = localStorage.getItem(KEY) || "desk"; } catch (e) { view = "desk"; }
   if (view !== "copy") view = "desk";
-  try { spark.range = localStorage.getItem(RANGE_KEY) || "week"; } catch (e) {}
-  if (!(spark.range in RANGES) && spark.range !== "all") spark.range = "week";
+  try { spark.range = localStorage.getItem(RANGE_KEY) || "start"; } catch (e) {}
+  if (!(spark.range in RANGES) && spark.range !== "all" && spark.range !== "start") spark.range = "start";
 
   function $(s, el) { return (el || document).querySelector(s); }
   function $all(s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); }
@@ -153,15 +153,31 @@
       return { ts: num(p && (p.ts != null ? p.ts : p.t)), v: num(p && (p.balance != null ? p.balance : p.equity != null ? p.equity : p.v)) };
     }).filter(function (p) { return p.ts != null && p.v != null; });
     pts.sort(function (a, b) { return a.ts - b.ts; });
-    if (pts.length && spark.range !== "all" && RANGES[spark.range]) {
-      var cut = (Date.now() / 1000) - RANGES[spark.range], head = null;
+    var now = Date.now() / 1000;
+    if (spark.range !== "all" && spark.range !== "start" && RANGES[spark.range]) {
+      var cut = now - RANGES[spark.range], head = null;
       pts = pts.filter(function (p) { if (p.ts < cut) { head = p; return false; } return true; });
       if (head && (!pts.length || pts[0].ts > cut)) pts.unshift({ ts: cut, v: head.v });
     }
     var start = num(c && c.start_stack);
     if (start == null && pts.length) start = pts[0].v;
+    var bal = num(c && c.balance);
+    if (bal == null && pts.length) bal = pts[pts.length - 1].v;
+    if (bal == null && start != null) bal = start;
+    // Like desk: extend the copy paper equity line to now, even before the first fill.
+    if (start != null && !pts.length) {
+      var t0 = now - 60;
+      pts = [{ ts: t0, v: start }, { ts: now, v: bal }];
+    } else if (pts.length === 1) {
+      var p0 = pts[0];
+      if (p0.ts < now - 1) pts = [p0, { ts: now, v: bal != null ? bal : p0.v }];
+      else pts = [{ ts: p0.ts - 60, v: p0.v }, { ts: now, v: bal != null ? bal : p0.v }];
+    } else if (pts.length >= 2 && pts[pts.length - 1].ts < now - 2 && bal != null) {
+      pts = pts.concat([{ ts: now, v: bal }]);
+    }
     return { pts: pts, start: start };
   }
+
   function drawSpark(c) {
     var wrap = $("#copySparkWrap"), host = $("#copySpark");
     if (!wrap || !host) return;
@@ -407,27 +423,46 @@
   }
 
   function renderHero(c) {
-    var kicker = $("#copyKicker"), bal = $("#copyBal"), sub = $("#copyPnlSub");
-    var usd = $("#copyPnlUsd"), pp = $("#copyPnlPct"), pill = $("#copyMultPill");
-    var st = statusLabel(c);
-    if (!c || c.engine_status === "not_running") {
-      if (kicker) kicker.textContent = "Copy trading";
-      if (bal) bal.textContent = "—";
+    var kicker = $("#copyKicker"), balEl = $("#copyBal"), sub = $("#copyPnlSub");
+    var usd = $("#copyPnlUsd"), pp = $("#copyPnlPct"), pill = $("#copyMultPill"), row = $("#copyPnlRow");
+    c = c || {};
+    var start = num(c.start_stack);
+    var bal = num(c.balance);
+    var pnl = num(c.pnl_usd);
+    var pnlt = num(c.pnl_pct);
+    if (start != null && bal != null) {
+      if (pnl == null) pnl = bal - start;
+      if (pnlt == null && start) pnlt = 100 * (bal - start) / start;
+    }
+    var hasPaper = start != null && start !== 0;
+    if (hasPaper || bal != null) {
+      var kb = ["Copy equity"];
+      if (hasPaper) {
+        var sinceTs = null;
+        if (c.equity && c.equity[0] && num(c.equity[0].ts) != null) sinceTs = num(c.equity[0].ts);
+        var hhmm = sinceTs ? new Date(sinceTs * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }) : "";
+        kb.push(money(start).replace(/\.00$/, "") + (hhmm ? " at " + hhmm : ""));
+      }
+      var buy = null;
+      if (c.settings && c.settings.copy_buy_usd != null) buy = num(c.settings.copy_buy_usd);
+      if (buy == null && c.settings && c.settings.values && c.settings.values.buy_usd) buy = num(c.settings.values.buy_usd.value);
+      if (buy != null && bal) kb.push(Math.max(1, Math.round(100 * buy / bal)) + "% max size");
+      if (kicker) kicker.textContent = kb.join(" · ");
+      if (balEl) balEl.textContent = bal == null ? "—" : money(bal, false);
+      if (usd) { usd.textContent = pnl == null ? "—" : money(pnl, true); usd.className = toneClass(pnl); }
+      if (pp) { pp.textContent = pnlt == null ? "—" : ((pnlt > 0 ? "+" : pnlt < 0 ? "−" : "") + Math.abs(pnlt).toFixed(2) + "%"); pp.className = toneClass(pnlt); }
+      if (row) row.className = "pnl-row " + (pnl == null ? "flat" : toneClass(pnl) || "flat");
+      if (sub) {
+        var startBit = hasPaper ? ("vs " + money(start) + " copy paper start") : "copy paper start";
+        var extra = c.copy_enabled ? "" : " · shadow only";
+        sub.textContent = "P&L " + startBit + extra;
+      }
+    } else {
+      if (kicker) kicker.textContent = "Copy equity";
+      if (balEl) balEl.textContent = "—";
       if (usd) usd.textContent = "—";
       if (pp) pp.textContent = "—";
-      if (sub) sub.textContent = "No copy P&L yet · this view only shows real copy fills";
-      if (pill) pill.hidden = true;
-      return;
-    }
-    var hasStart = num(c.start_stack) != null && num(c.start_stack) !== 0;
-    var shown = hasStart ? num(c.balance) : num(c.pnl_usd);
-    if (kicker) kicker.textContent = hasStart ? "Copy equity" : "Copy P&L";
-    if (bal) bal.textContent = shown == null ? "—" : money(shown, !hasStart);
-    if (usd) { usd.textContent = c.pnl_usd == null ? "—" : money(c.pnl_usd, true); usd.className = toneClass(c.pnl_usd); }
-    if (pp) { pp.textContent = c.pnl_pct == null ? "—" : ((c.pnl_pct > 0 ? "+" : c.pnl_pct < 0 ? "−" : "") + Math.abs(c.pnl_pct).toFixed(2) + "%"); pp.className = toneClass(c.pnl_pct); }
-    if (sub) {
-      sub.textContent = (c.closed && c.closed.length ? (c.wins + "W / " + c.losses + "L") : "No closed copy trades yet") +
-        (st.live ? " · live" : "");
+      if (sub) sub.textContent = "Copy paper start not in this file yet";
     }
     if (pill) {
       var w = num(c.wins) || 0, l = num(c.losses) || 0;

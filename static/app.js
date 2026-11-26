@@ -2660,7 +2660,7 @@
       BuddyCopyApp.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     }
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v86"; /* copy settings file is the one source of truth; TP 0 = follow wallet */
+      BuddySettings.hooks.version = "app v87"; /* copy PAPER ledger balance in Copy mode */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {

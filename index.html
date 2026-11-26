@@ -17,7 +17,7 @@
 <title>Buddy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"/>
-<link rel="stylesheet" href="static/app.css?v=86"/>
+<link rel="stylesheet" href="static/app.css?v=87"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -303,7 +303,7 @@
   <div id="copyRoot" class="copy-root" hidden>
     <section id="copyHome" class="copy-tab on" aria-labelledby="copyHomeTab">
       <div class="hero">
-        <p class="kicker" id="copyKicker">Copy trading</p>
+        <p class="kicker" id="copyKicker">Copy equity</p>
         <p id="copyBal" class="bal" data-split>—</p>
         <div id="copyPnlRow" class="pnl-row flat">
           <span id="copyPnlUsd">—</span>
@@ -311,13 +311,14 @@
           <span id="copyPnlPct">—</span>
           <div id="copyMultPill" class="mult-pill flat" hidden><b id="copyMultX"></b><span id="copyMultWL"><i id="copyMultW">0</i>W / <i id="copyMultL">0</i>L</span></div>
         </div>
-        <p id="copyPnlSub" class="sub">No copy P&amp;L yet</p>
+        <p id="copyPnlSub" class="sub">P&amp;L vs $200 copy paper start</p>
         <div id="copySparkWrap" class="spark-wrap">
           <div id="copySpark" class="spark" role="img" aria-label="Copy trading equity" hidden></div>
-          <p id="copySparkEmpty" class="copy-empty spark-empty">No copy equity yet. The chart stays empty until a real copy fill is recorded.</p>
+          <p id="copySparkEmpty" class="copy-empty spark-empty">Copy paper equity will show here from the $200 start.</p>
           <div id="copySparkRanges" class="spark-ranges" role="group" aria-label="Copy equity range">
+            <button type="button" data-copy-spark="start" class="on">Start</button>
             <button type="button" data-copy-spark="day">Day</button>
-            <button type="button" data-copy-spark="week" class="on">Week</button>
+            <button type="button" data-copy-spark="week">Week</button>
             <button type="button" data-copy-spark="month">Month</button>
             <button type="button" data-copy-spark="year">Year</button>
             <button type="button" data-copy-spark="all">All</button>
@@ -447,7 +448,7 @@
 <script src="static/adaptive.js?v=1"></script>
 <script src="static/settings.js?v=78"></script>
 <script src="static/session.js?v=8"></script>
-<script src="static/copy_app.js?v=86"></script>
-  <script src="static/app.js?v=86"></script>
+<script src="static/copy_app.js?v=87"></script>
+  <script src="static/app.js?v=87"></script>
 </body>
 </html>
