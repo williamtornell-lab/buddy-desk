@@ -8,6 +8,8 @@
     quoteNote: ""
   };
   const restartUi = Object.create(null);
+  const sellingUi = Object.create(null);
+  const soldUi = Object.create(null); /* v83: sold cards disappear right after the desk ack */
 
   function esc(v) {
     return String(v ?? "").replace(/[&<>"']/g, (c) => ({
@@ -131,13 +133,17 @@
 
   function opensForMode(s, trades, live) {
     if (live) {
-      const raw = Array.isArray(s.fomo_holdings) && s.fomo_holdings.length
-        ? s.fomo_holdings
-        : (Array.isArray(s.positions) ? s.positions.filter(isFomoRow) : []);
+      const real = (s && s.real) || {};
+      const raw = Array.isArray(real.open_trades) && real.open_trades.length
+        ? real.open_trades
+        : (Array.isArray(s.positions) ? s.positions.filter(function (p) {
+            const src = String((p && (p.source || p.mode)) || "").toUpperCase();
+            return src === "REAL" || src === "WALLET" || src === "LIVE";
+          }) : []);
       return raw.map((p) => {
         const t = normalizeTrade(p, s, true);
-        t.source = p.source || t.source || "fomo";
-        t.mode = "FOMO";
+        t.source = p.source || t.source || "wallet";
+        t.mode = "REAL";
         if (!t.open && !t.closed_at) t.open = true;
         return t;
       });
@@ -146,7 +152,7 @@
       return s.positions
         .filter((p) => !isFomoRow(p))
         .map((p) => normalizeTrade(p, s, true))
-        .filter((t) => t.open || !t.closed_at);
+        .filter((t) => t.open);
     }
     return trades.filter((t) => t.open && !isFomoRow(t));
   }
@@ -161,10 +167,13 @@
     return Math.round(s / 86400) + "d";
   }
 
-  function clock(ts) {
+  const CLOCK_TZ = "Europe/Stockholm";
+  function clock(ts, withSeconds) {
     const t = toUnix(ts);
     if (t == null) return "";
-    return new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const opt = { timeZone: CLOCK_TZ, hour: "numeric", minute: "2-digit" };
+    if (withSeconds) opt.second = "2-digit";
+    return new Date(t * 1000).toLocaleTimeString("sv-SE", opt);
   }
 
   function money(n, digits) {
@@ -217,10 +226,49 @@
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
+  function isFailedTrade(t) {
+    if (!t) return false;
+    const s = String(t.side_or_status || t.status || "").toLowerCase();
+    if (s === "failed" || s === "fail") return true;
+    return false;
+  }
+
+  function isRuggedTrade(t) {
+    if (!t) return false;
+    const r = String(t.exit_reason || "").toLowerCase();
+    return r === "rugged" || r === "rug";
+  }
+
+  function isBuyingTrade(t) {
+    const s = String((t && (t.side_or_status || t.status)) || "").toLowerCase();
+    return s === "pending" || s === "unconfirmed" || s === "buying";
+  }
+
+  function failReason(t) {
+    const e = String((t && (t.last_error || t.exit_reason)) || "").trim();
+    const m = e.match(/price impact\s*(-?[\d.]+)\s*%/i);
+    if (m) return "price impact " + Math.abs(Number(m[1])).toFixed(1) + "%";
+    return e.replace(/_/g, " ");
+  }
+
+  function srcPill(t) {
+    const m = String((t && (t.mode || t.source)) || "").toUpperCase();
+    if (/FOMO/.test(m) && !/REAL|LIVE|WALLET/.test(m) || (t && t.source === "fomo")) {
+      return '<span class="src-pill fomo">FOMO</span>';
+    }
+    if (/REAL|LIVE|WALLET/.test(m) || (t && t.source === "wallet")) {
+      return '<span class="src-pill real">REAL</span>';
+    }
+    return '<span class="src-pill paper">PAPER</span>';
+  }
+
   function sideLabel(t) {
+    if (isRuggedTrade(t)) return "Rugged";
+    if (isFailedTrade(t)) return "Buy failed";
     const s = String(t.side_or_status || "").toLowerCase();
+    if (s === "pending" || s === "unconfirmed" || s === "buying") return "Buying…";
     if (s === "open" || s === "opening" || s === "live") return "Open";
-    if (s === "exiting") return "Exiting";
+    if (s === "exiting" || s === "selling") return "Exiting";
     if (s === "buy" || s === "bought") return t.closed_at ? "Bought" : "Open";
     if (s === "sell" || s === "sold" || s === "closed" || s === "exited" || s === "exit") return "Sold";
     if (t.closed_at) return "Sold";
@@ -229,9 +277,10 @@
   }
 
   function isOpenTrade(t) {
+    if (isFailedTrade(t) || isRuggedTrade(t)) return false;
     const s = String(t.side_or_status || "").toLowerCase();
-    if (["closed", "sold", "sell", "exited", "exit"].includes(s)) return false;
-    if (["open", "opening", "exiting", "live"].includes(s)) return true;
+    if (["closed", "sold", "sell", "exited", "exit", "failed", "fail", "rugged"].includes(s)) return false;
+    if (["open", "opening", "exiting", "selling", "live", "pending", "unconfirmed", "buying"].includes(s)) return true;
     if (t.closed_at) return false;
     return true;
   }
@@ -266,23 +315,30 @@
     const coin = coinOf(s, p.mint);
     const entry = num(p.entry != null ? p.entry : p.entry_price);
     const exit = num(p.exit != null ? p.exit : (p.exit_price != null ? p.exit_price : p.avg_exit));
-    const size = num(p.size_usd != null ? p.size_usd : p.size);
-    let pnlUsd = num(p.pnl_usd != null ? p.pnl_usd : (p.realized_pnl != null ? p.realized_pnl : p.pnl));
+    const size = num(p.size_usd != null ? p.size_usd : (p.size != null ? p.size : p.usd_in));
+    const invested = num(p.invested_usd != null ? p.invested_usd : (p.pnl_overall_usd != null ? p.usd_in : null));
+    let pnlUsd = num(p.pnl_overall_usd != null ? p.pnl_overall_usd : (p.pnl_usd != null ? p.pnl_usd : (p.realized_pnl != null ? p.realized_pnl : p.pnl)));
     let pnlPct = num(p.pnl_pct);
-    const fees = num(p.fees_usd != null ? p.fees_usd : p.fees);
+    const fees = num(p.fees_usd != null ? p.fees_usd : (p.fees != null ? p.fees : p.fee_usd));
     const side = p.side_or_status || p.status || p.side || "";
     const closedAt = p.closed_at || p.closed || null;
     const open = isOpenTrade({ side_or_status: side, closed_at: closedAt });
     if (fromPosition && open && pnlUsd == null) pnlPct = null;
     if (pnlPct == null && entry && exit) pnlPct = (exit / entry - 1) * 100;
+    const basis = (invested && size && invested > size) ? invested : (invested || size);
+    if (pnlPct == null && pnlUsd != null && basis) pnlPct = pnlUsd / basis * 100;
     if (pnlUsd == null && pnlPct != null && size != null) {
       pnlUsd = size * pnlPct / 100 - (fees || 0);
       if (size) pnlPct = pnlUsd / size * 100;
     }
     return {
+      id: p.id,
       mint: p.mint || "",
       pos_key: p.pos_key || undefined,
       sub_bot: p.sub_bot || undefined,
+      proven: p.proven || undefined,
+      surge: p.surge || undefined,
+      trending: p.trending || undefined,
       name: p.name || coin.name || "",
       symbol: p.symbol || coin.symbol || "",
       side_or_status: side,
@@ -314,7 +370,10 @@
       demo: !!(p.demo || (s && s.demo)),
       trading_mode: p.trading_mode || p.paper_mode || p.trade_mode || p.style || p.mode_name || p.strategy_mode || "",
       entry_context: p.entry_context || null,
-      strategy: p.strategy || ""
+      strategy: p.strategy || "",
+      last_error: p.last_error || "",
+      invested_usd: num(p.invested_usd != null ? p.invested_usd : p.usd_in),
+      usd_in: num(p.usd_in)
     };
   }
 
@@ -354,7 +413,34 @@
     return Math.round(s / 86400) + "d ago";
   }
 
-  function freshLabel(m) {
+
+  function heldForText(ts, nowS) {
+    const t = toUnix(ts);
+    if (t == null) return "";
+    const now = nowS != null && Number.isFinite(nowS) ? nowS : Date.now() / 1000;
+    let s = Math.max(0, Math.floor(now - t));
+    if (s < 60) return "Held " + s + "s";
+    const m = Math.floor(s / 60);
+    const rs = s % 60;
+    if (m < 60) return "Held " + m + "m " + String(rs).padStart(2, "0") + "s";
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    if (h < 48) return "Held " + h + "h " + String(rm).padStart(2, "0") + "m";
+    const d = Math.floor(h / 24);
+    const rh = h % 24;
+    return "Held " + d + "d " + String(rh).padStart(2, "0") + "h";
+  }
+
+  function tickHeld(nowS) {
+    const now = nowS != null && Number.isFinite(nowS) ? nowS : Date.now() / 1000;
+    document.querySelectorAll(".oc-held[data-opened]").forEach((el) => {
+      const next = heldForText(el.getAttribute("data-opened"), now);
+      if (next && el.textContent !== next) el.textContent = next;
+    });
+  }
+
+  function freshLabel(m, t) {
+    if (t && isBuyingTrade(t) && (!m || m.price == null)) return { text: "Buying…", stale: false };
     if (!m || m.price == null) return { text: "No quote", stale: true };
     if (m.demo) return { text: "Sample", stale: false };
     if (m.receivedAt == null) return { text: "Time unknown", stale: true };
@@ -370,7 +456,99 @@
     return valueBit + (pnlBit ? " · " + pnlBit : "") + miss;
   }
 
+  function realWalletUsd(s) {
+    // Hot wallet only: USDC + SOL*price + marked open bags. Never FOMO or paper.
+    // meta.real_wallet_bal.sol_usd is the SOL *price*, not the SOL position value
+    // (15.70 + 82.24 was wrongly shown as $97.94).
+    const r = (s && s.real) || {};
+    const b = r.balance || {};
+    const usdc = num(b.usdc);
+    const solAmt = num(b.sol);
+    const px = num(b.sol_px) || num(b.sol_usd_px) || (solAmt != null && solAmt < 1000 ? num(b.sol_usd) : null);
+    if (usdc != null || solAmt != null) {
+      const cash = (usdc || 0) + (solAmt || 0) * (px || 0);
+      const marks = num(r.open_marks_usd) || 0;
+      return cash + marks;
+    }
+    if (r.wallet_usd != null && Number.isFinite(Number(r.wallet_usd))) return Number(r.wallet_usd);
+    return null;
+  }
+
+  function realDayStartUsd(s) {
+    const r = (s && s.real) || {};
+    const direct = num(r.day_start_usd) || num((r.today || {}).start);
+    if (direct != null) return direct;
+    const raw = (Array.isArray(s.real_equity) && s.real_equity.length) ? s.real_equity
+      : (Array.isArray(r.equity) ? r.equity : []);
+    const startOfDay = (function () {
+      const now = new Date();
+      // Europe/Stockholm, UTC+1 in winter / +2 in summer; use the snapshot if it has a tz later.
+      const d = new Date(now.getTime());
+      // Midnight Stockholm: offset +1 or +2 from UTC. The server already prefers day_start_usd.
+      const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Stockholm", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+      return ymd;
+    })();
+    let first = null;
+    raw.forEach((p) => {
+      const ts = toUnix(p && (p.ts != null ? p.ts : p.t));
+      const bal = num(p && (p.balance != null ? p.balance : (p.equity != null ? p.equity : p.v)));
+      if (ts == null || bal == null || bal <= 0.01) return;
+      const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Stockholm", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ts * 1000));
+      if (ymd === startOfDay && first == null) first = bal;
+    });
+    return first;
+  }
+
+  function realPerformance(s) {
+    const bal = realWalletUsd(s);
+    const start = realDayStartUsd(s);
+    let usd = (bal != null && start != null) ? bal - start : num((((s && s.real) || {}).today || {}).total);
+    const pct = (start && usd != null) ? (usd / start) * 100 : null;
+    return { start: start, known: start != null, bal: bal, usd: usd, pct: pct };
+  }
+
+  function activityOf(s) {
+    const live = !!(s && effectiveMode(s).live);
+    const realActs = live && s && s.real && Array.isArray(s.real.activity) ? s.real.activity : null;
+    const rows = Array.isArray(realActs) && realActs.length
+      ? realActs.slice()
+      : (Array.isArray(s && s.activity) ? s.activity.slice() : []);
+    if (!live) return rows;
+    return rows.filter((a) => {
+      const d = String((a && a.detail) || "").toLowerCase();
+      const t = String((a && a.title) || "");
+      const k = String((a && a.kind) || "").toLowerCase();
+      return d.indexOf("real") === 0 || /^REAL\s/.test(t) || t.indexOf("REAL bought") >= 0 || t.indexOf("REAL sold") >= 0 || t.indexOf("REAL partial") >= 0 || ((k === "buy" || k === "sell") && /real/i.test(d + " " + t));
+    });
+  }
+
   function tradesOf(s) {
+    const live = !!(s && effectiveMode(s).live);
+    if (live) {
+      const r = s.real || {};
+      const rows = []
+        .concat(Array.isArray(r.open_trades) ? r.open_trades : [])
+        .concat(Array.isArray(r.closed_trades) ? r.closed_trades : [])
+        .concat(Array.isArray(r.failed_trades) ? r.failed_trades : [])
+        .concat(Array.isArray(r.trades) ? r.trades : []);
+      const seen = {};
+      const out = [];
+      rows.forEach((tr) => {
+        const k = String(tr.id != null ? tr.id : (tr.mint || "") + "|" + (tr.opened_at || ""));
+        if (seen[k]) return;
+        seen[k] = 1;
+        const t = normalizeTrade(tr, s, false);
+        t.mode = "REAL";
+        t.source = t.source || "wallet";
+        out.push(t);
+      });
+      return out.sort((a, b) => {
+        if (a.open !== b.open) return a.open ? 1 : -1;
+        const ta = toUnix(a.closed_at || a.opened_at) || 0;
+        const tb = toUnix(b.closed_at || b.opened_at) || 0;
+        return tb - ta;
+      });
+    }
     const rows = Array.isArray(s.trades)
       ? s.trades.map((t) => normalizeTrade(t, s, false))
       : (Array.isArray(s.positions) ? s.positions.map((p) => normalizeTrade(p, s, true)) : []);
@@ -880,6 +1058,19 @@
   }
 
   function tradeBits(t, mode) {
+    if (isRuggedTrade(t)) {
+      const bits = ["Rugged", "pool emptied"];
+      if (t.pnl_usd != null && t.pnl_usd !== "") bits.push(signedMoney(t.pnl_usd));
+      return bits;
+    }
+    if (isFailedTrade(t)) {
+      const bits = ["Buy failed"];
+      const why = failReason(t);
+      if (why) bits.push(why);
+      const when = rel(t.closed_at || t.opened_at);
+      if (when) bits.push(when);
+      return bits;
+    }
     const bits = [sideLabel(t)];
     if (mode === "open") return bits;
     if (t.exit_reason && !t.open) bits.push(labelize(t.exit_reason));
@@ -901,17 +1092,50 @@
     return '<span class="pnl-col flat">—<span class="pct">No cost</span></span>';
   }
 
+  function sellKeyOf(t) {
+    if (!t) return "";
+    const realish = /REAL|LIVE|WALLET/i.test(String(t.mode || t.source || "")) || t.source === "wallet";
+    if (realish) {
+      if (t.id != null && String(t.id) !== "") return "real:" + t.id;
+      const mint = String(t.mint || t.pos_key || "").split("~")[0];
+      return mint ? "real:" + mint : "";
+    }
+    const key = String(t.pos_key || t.mint || "");
+    if (!key) return "";
+    return key.indexOf("paper:") === 0 ? key : "paper:" + key;
+  }
+
+  function isSellingTrade(t) {
+    const s = String((t && (t.side_or_status || t.status)) || "").toLowerCase();
+    if (s === "selling" || s === "exiting") return true;
+    const key = sellKeyOf(t);
+    const rec = key && sellingUi[key];
+    return !!(rec && rec.until > Date.now());
+  }
+
+  function sellNowBtn(t) {
+    if (!t || !t.mint) return "";
+    if (isBuyingTrade(t)) return "";
+    if (isSellingTrade(t)) {
+      return '<span class="oc-selling">selling…</span>';
+    }
+    const key = sellKeyOf(t);
+    if (!key) return "";
+    return '<button type="button" class="sell-now" data-sell="' + esc(key) + '" data-sell-name="' + esc(displayTicker(t)) + '">Sell now</button>';
+  }
+
   function openCard(t, index) {
     const m = liveMark(t);
-    const fresh = freshLabel(m);
+    const fresh = freshLabel(m, t);
     const fomo = String(t.mode || t.source || "").toUpperCase();
     const realRow = /FOMO|REAL|LIVE|WALLET/.test(fomo) || t.source === "fomo" || t.source === "wallet";
-    const pill = fomo.indexOf("FOMO") >= 0 || t.source === "fomo" || t.source === "wallet"
-      ? '<span class="src-pill fomo">FOMO</span>' : "";
+    const pill = srcPill(t);
     const entry = m.entry == null ? "—" : price(m.entry);
     const nowPx = m.price == null ? "—" : price(m.price);
     const value = m.value != null ? money(m.value) : (m.walletUsd != null ? money(m.walletUsd) : "—");
     const freshTxt = String(fresh.text).replace(/^Updated\s+/, "");
+    const heldAt = toUnix(t.opened_at);
+    const heldTxt = heldAt != null ? heldForText(heldAt) : "";
     const cell = (k, v, cls) => '<span class="oc-cell"><i>' + k + '</i><b' + (cls ? ' class="' + cls + '"' : "") + ">" + esc(v) + "</b></span>";
     const nowTone = m.pct != null && Number.isFinite(m.pct) && Math.abs(m.pct) >= 0.01 ? (m.pct > 0 ? "up" : "down") : "";
     return (
@@ -921,19 +1145,33 @@
       coinLogoHtml(t.mint, t.symbol, t.name, null, pickImageUrl(t)) +
       '<span class="who">' +
       '<span class="oc-name"><span class="oc-sym">' + esc(displayTicker(t)) + "</span>" + pill + (window.BuddyStyles ? BuddyStyles.tagHtml(t, state.data) : "") + "</span>" +
-      '<span class="oc-fresh' + (fresh.stale ? " stale" : "") + '" title="' + esc(fresh.text) + '"><i aria-hidden="true"></i>' + esc(freshTxt) + "</span>" +
       "</span>" + gainMarkup(m) +
       "</span>" +
       '<span class="oc-grid">' + cell("Entry", entry) + cell("Now", nowPx, nowTone) + cell("Value", value) + "</span>" +
+      (m && m.samples && m.samples.length >= 2 && window.BuddyMarks && BuddyMarks.chartSvg
+        ? '<span class="oc-spark">' + String(BuddyMarks.chartSvg(m.samples)).replace("<svg ", '<svg preserveAspectRatio="none" ') + "</span>"
+        : "") +
+      /* v82: held timer + freshness on their own line under the chart */
+      '<span class="oc-meta">' +
+      (heldTxt ? '<span class="oc-held" data-opened="' + heldAt + '">' + esc(heldTxt) + "</span>" : "") +
+      '<span class="oc-fresh' + (fresh.stale ? " stale" : "") + '" title="' + esc(fresh.text) + '"><i aria-hidden="true"></i>' + esc(freshTxt) + "</span>" +
+      "</span>" +
       "</button>" +
       '<span class="oc-links">' +
-      (realRow || !t.mint ? "" : '<button type="button" class="paper-sell" data-sell="' + esc(t.pos_key || t.mint) + '" data-sell-name="' + esc(displayTicker(t)) + '">Sell</button>') +
+      sellNowBtn(t) +
       dexLink(t.mint, t) + fomoLink(t.link, "FOMO", t.mint) + "</span>" +
       "</div>"
     );
   }
 
   function pnlMarkup(t) {
+    if (isRuggedTrade(t)) {
+      const pnl = t.pnl_usd;
+      if (pnl == null) return '<span class="pnl-col down">—</span>';
+      return '<span class="pnl-col ' + toneOf(pnl) + '">' + esc(signedMoney(pnl)) +
+        '<span class="pct">Rugged</span></span>';
+    }
+    if (isFailedTrade(t)) return '<span class="pnl-col flat muted">—</span>';
     if (t.open) return gainMarkup(liveMark(t));
     if (t.pnl_usd == null) return "";
     return '<span class="pnl-col ' + toneOf(t.pnl_usd) + '">' + esc(signedMoney(t.pnl_usd)) +
@@ -942,21 +1180,23 @@
 
   function tradeButton(t, index, mode) {
     if (mode === "open") return openCard(t, index);
+    const failed = isFailedTrade(t);
     const bits = tradeBits(t, mode).filter((bit) => bit.indexOf("fees ") !== 0);
     const name = displayName(t);
-    if (name && name !== displayTicker(t)) bits.unshift(name);
+    const showName = !!(name && name !== displayTicker(t));
     return (
-      '<div class="trade-row">' +
-      '<button type="button" class="trade" data-trade="' + index + '">' +
+      '<div class="trade-row' + (failed ? " failed" : "") + '">' +
+      '<button type="button" class="trade' + (failed ? " failed" : "") + '" data-trade="' + index + '">' +
       coinLogoHtml(t.mint, t.symbol, t.name, null, pickImageUrl(t)) +
       "<span class=\"who\">" +
       '<span class="ticker">' + esc(displayTicker(t)) +
-      (String(t.mode || t.source || "").toUpperCase().indexOf("FOMO") >= 0 || t.source === "fomo" || t.source === "wallet"
-        ? '<span class="src-pill fomo">FOMO</span>'
-        : '<span class="src-pill paper">PAPER</span>') +
+      srcPill(t) +
       (window.BuddyStyles ? BuddyStyles.tagHtml(t, state.data) : "") +
       "</span>" +
-      '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" +
+      /* v83: long full name truncates; reason · size · time stay together on one line */
+      '<span class="meta-line ml-split">' +
+      (showName ? '<span class="ml-name">' + esc(name) + "</span>" : "") +
+      '<span class="ml-rest">' + esc((showName && bits.length ? " · " : "") + bits.join(" · ")) + "</span></span>" +
       "</span>" + pnlMarkup(t) +
       "</button>" + rowLinks(dexLink(t.mint, t) + fomoLink(t.link, "FOMO", t.mint)) +
       "</div>"
@@ -970,39 +1210,71 @@
     const age = w.age_min != null ? Number(w.age_min) : null;
     const holders = num(w.holders != null ? w.holders : coin.holders);
     const name = displayName(w.name ? w : coin);
+    const entryWait = !!(w.entry_wait || String(w.status || "").toLowerCase() === "waiting for entry");
+    const missing = String(w.missing || "").trim();
     const bits = [];
-    if (name && name.toUpperCase() !== String(ticker).toUpperCase()) bits.push(name);
-    if (holders != null) bits.push(holders < 1000 ? holders + " holders" : (holders / 1000).toFixed(holders >= 10000 ? 0 : 1) + "k holders");
+    if (missing) bits.push(missing);
+    else {
+      if (name && name.toUpperCase() !== String(ticker).toUpperCase()) bits.push(name);
+      if (holders != null) bits.push(holders < 1000 ? holders + " holders" : (holders / 1000).toFixed(holders >= 10000 ? 0 : 1) + "k holders");
+    }
     const ageTxt = age != null && Number.isFinite(age) ? (age < 1 ? "<1m" : Math.round(age) + "m") : "";
-    const status = String(w.status || "watching").toLowerCase();
-    const pill = ageTxt ? ageTxt : status;
-    const q = window.BuddyDash && BuddyDash.quote ? BuddyDash.quote(w.mint) : null;
-    const px = q && q.price != null && window.BuddyChart ? "$" + BuddyChart.fmtPrice(q.price) : "";
-    const ch = q && q.change != null ? q.change : null;
-    const chTxt = ch == null ? "" : (ch > 0 ? "+" : ch < 0 ? "−" : "") + Math.abs(ch).toFixed(Math.abs(ch) >= 100 ? 0 : 1) + "%";
+    const status = entryWait ? "waiting for entry" : String(w.status || "watching").toLowerCase();
+    const pill = entryWait ? "waiting for entry" : (ageTxt ? ageTxt : status);
+    const src = String(w.source || coin.source || "").trim();
+    const flags = [];
+    if (w.proven || coin.proven) flags.push("proven");
+    if (src === "surge" || w.surge || coin.surge) flags.push("surge");
+    if (src === "trending" || w.trending || coin.trending) flags.push("trending");
     const mint = w.mint ? esc(w.mint) : "";
     const img = pickImageUrl(w) || pickImageUrl(coin);
     return (
-      '<div class="wait-row">' +
-      '<button type="button" class="wait-main" data-mint="' + mint + '">' +
+      '<button type="button" class="wait-card' + (entryWait ? " wait-entry" : "") + '" data-mint="' + mint + '">' +
       coinLogoHtml(w.mint, w.symbol || coin.symbol, w.name || coin.name, null, img) +
-      '<span class="who"><span class="ticker">$' + esc(String(ticker).replace(/^\$/, "")) + "</span>" +
-      (bits.length ? '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" : "") + "</span>" +
-      '<span class="wait-px">' + (px ? "<b>" + esc(px) + "</b>" : '<b class="flat">—</b>') +
-      (chTxt ? '<span class="' + (ch >= 0 ? "up" : "down") + '">' + esc(chTxt) + "</span>" : "") + "</span>" +
+      '<span class="ticker">$' + esc(String(ticker).replace(/^\$/, "")) + "</span>" +
+      (bits.length ? '<span class="meta-line">' + esc(bits.join(" · ")) + "</span>" : "") +
+      (flags.length ? flags.map(function (f) { return '<span class="style-tag st-' + f + '">' + esc(f) + "</span>"; }).join("") : (src ? '<span class="wait-src">' + esc(src) + "</span>" : "")) +
       '<span class="wait-pill" title="' + esc(status) + '">' + esc(pill) + "</span>" +
-      "</button>" + dexLink(w.mint, w) +
-      "</div>"
+      "</button>"
     );
+  }
+
+  function parseActivityPnl(title) {
+    const s = String(title || "");
+    let usd = null, pct = null;
+    const um = s.match(/([+\-−])\s*\$(\d+(?:\.\d+)?)/);
+    if (um) usd = (um[1] === "-" || um[1] === "−" ? -1 : 1) * Number(um[2]);
+    const pm = s.match(/([+\-−])\s*(\d+(?:\.\d+)?)\s*%/);
+    if (pm) pct = (pm[1] === "-" || pm[1] === "−" ? -1 : 1) * Number(pm[2]);
+    return { usd: usd, pct: pct };
+  }
+
+  function activityPnl(a) {
+    const kind = String((a && a.kind) || "").toLowerCase();
+    const title = String((a && a.title) || "");
+    const isTrade = kind === "sell" || /\b(sold|partial|stopped|timeout|fade|trail|rugged|manual)\b/i.test(title);
+    if (!isTrade) return "";
+    let usd = num(a.pnl_usd);
+    let pct = num(a.pnl_pct);
+    if (usd == null || pct == null) {
+      const parsed = parseActivityPnl(title);
+      if (usd == null) usd = parsed.usd;
+      if (pct == null) pct = parsed.pct;
+    }
+    if (usd == null && pct == null) return "";
+    return '<span class="pnl-col ' + toneOf(usd != null ? usd : pct) + '">' +
+      (usd != null ? esc(signedMoney(usd)) : "—") +
+      '<span class="pct">' + esc(signedPct(pct)) + "</span></span>";
   }
 
   function activityRow(a) {
     const title = a.title || a.kind || "Activity";
     const detailBits = [];
-    if (a.detail) detailBits.push(a.detail);
+    if (a.detail && !/^real(_scalping)?$/i.test(String(a.detail))) detailBits.push(a.detail);
     const when = rel(a.ts);
     if (when) detailBits.push(when);
     const mint = a.mint ? esc(a.mint) : "";
+    const pnl = activityPnl(a);
     return (
       '<div class="feed-row">' +
       '<button type="button" class="feed-main" data-mint="' + mint + '">' +
@@ -1010,7 +1282,7 @@
       "<span class=\"who\">" +
       "<span class=\"ticker\">" + esc(title) + "</span>" +
       '<span class="meta-line">' + esc(detailBits.join(" · ")) + "</span>" +
-      "</span>" +
+      "</span>" + pnl +
       "</button>" + rowLinks(dexLink(a.mint, null) + fomoLink(a.link, "FOMO", a.mint)) +
       "</div>"
     );
@@ -1061,6 +1333,7 @@
 
   let pendingMode = null;
   let pendingDesk = null;
+  let confirmArmedAt = 0;
   let modeUiBusy = false;
 
   function showToast(text, isReal) {
@@ -1094,12 +1367,12 @@
     if (!box || !title || !body || !ok) return;
     if (next === "real") {
       title.textContent = "Switch to REAL?";
-      body.textContent = "Alerts-only. Telegram will say REAL. Buys/sells need your Bought/Sold tap. Buddy never places FOMO orders.";
+      body.textContent = "The desk will auto-buy and auto-sell on the hot wallet (Scalping + Quick + Runner + Moonshot can each take their own $3 fill, max 8 open, $24 exposure, $50 daily loss cap). New paper buys stop; open paper trades keep their exits. Real and paper cannot be on together.";
       ok.classList.add("danger");
       ok.textContent = "Switch to REAL";
     } else {
       title.textContent = "Switch to PAPER?";
-      body.textContent = "Paper auto-fills every signal. Telegram will say PAPER. Stack and stops stay simulated.";
+      body.textContent = "Paper will auto-buy and auto-sell again. Real auto turns off; open real trades keep their exits.";
       ok.classList.remove("danger");
       ok.textContent = "Switch to PAPER";
     }
@@ -1116,6 +1389,7 @@
   function openDeskConfirm(action) {
     pendingDesk = action;
     pendingMode = null;
+    confirmArmedAt = Date.now() + 500;
     const box = $("#modeConfirm");
     const title = $("#modeConfirmTitle");
     const body = $("#modeConfirmBody");
@@ -1131,15 +1405,17 @@
     }
     if (action.type === "style") {
       title.textContent = "Switch to " + (action.label || action.name) + "?";
-      body.textContent = "Applies to new trades only. Open trades keep the rules they were opened with. PAPER fills only; REAL stays alerts-only.";
+      body.textContent = "Applies to new trades only. Open trades keep the rules they were opened with. PAPER and REAL cannot run at the same time.";
       ok.textContent = "Switch";
       ok.classList.remove("danger");
       box.hidden = false;
       return;
     }
     if (action.type === "scalp") {
-      const nm = action.sub === "quick" ? "Quick" : action.sub === "runner" ? "Runner" : action.sub === "moonshot" ? "Moonshot" : String(action.sub || "Sub");
-      const blurb = action.sub === "quick"
+      const nm = action.sub === "all" ? "All modes" : action.sub === "quick" ? "Quick" : action.sub === "runner" ? "Runner" : action.sub === "moonshot" ? "Moonshot" : String(action.sub || "Sub");
+      const blurb = action.sub === "all"
+        ? " turns Scalping, Quick, Runner and Moonshot on together. Each bot still uses its own entry and exit rules. REAL limits still cap size, open trades and daily loss. Whale stays off."
+        : action.sub === "quick"
         ? " takes the same entries as Scalping with its own $20 position (TP +5%, 4 min)."
         : action.sub === "runner"
         ? " takes the same entries as Scalping with its own $20 position (TP +25%, trail 8% after +12%, 20 min)."
@@ -1147,7 +1423,9 @@
         ? " takes only the strongest Scalping entries ($10, max 2): LP locked, top10 <25%, liq ≥$20k, mcap <$500k, strong buying. Exits: 50% at +200%, rest at +1000% or 30% trail, stop −30%, max 3 days."
         : " PAPER sub-bot.";
       title.textContent = (action.on ? "Turn on " : "Turn off ") + nm + "?";
-      body.textContent = action.on
+      body.textContent = action.sub === "all"
+        ? (action.on ? nm + blurb : "Stops forcing every bot on. Individual Scalping, Quick, Runner and Moonshot switches still apply. Open trades keep their exits.")
+        : action.on
         ? "PAPER only. " + nm + blurb
         : "Stops new " + nm + " entries. Open " + nm + " trades still exit by their rules.";
       ok.textContent = action.on ? "Turn on" : "Turn off";
@@ -1158,7 +1436,7 @@
     if (action.type === "copy") {
       title.textContent = action.on ? "Turn copy trading on?" : "Turn copy trading off?";
       body.textContent = action.on
-        ? "PAPER only. Copies buys of the top FOMO traders: $20 each, max 5 open, sharing the paper balance. Runs alongside your trading mode. REAL stays alerts-only."
+        ? "PAPER only. Copies buys of the top FOMO traders: $20 each, max 5 open, sharing the paper balance. Runs alongside paper mode. Off in REAL."
         : "Stops new copies. Open copies still exit when the trader sells, or by stop, TP or 2 h.";
       ok.textContent = action.on ? "Turn on" : "Turn off";
       ok.classList.remove("danger");
@@ -1166,9 +1444,12 @@
       return;
     }
     if (action.type === "sell") {
-      title.textContent = "Sell " + (action.name || "this coin") + "?";
-      body.textContent = "Paper close at the latest price.";
-      ok.textContent = "Sell";
+      const who = action.name || "this coin";
+      title.textContent = "Sell all of " + who + " now?";
+      body.textContent = String(action.mint || "").indexOf("real:") === 0
+        ? "Market-sell the full REAL position (Jupiter, existing slippage)."
+        : "Close the full paper position at the latest price.";
+      ok.textContent = "Sell now";
     } else {
       title.textContent = "Reset paper to $200?";
       body.textContent = "Closes paper trades, saves a private backup, and clears paper history.";
@@ -1176,6 +1457,14 @@
     }
     ok.classList.add("danger");
     box.hidden = false;
+  }
+
+  function withTimeout(promise, ms, label) {
+    let t = 0;
+    const timeout = new Promise((_, rej) => {
+      t = window.setTimeout(() => rej(new Error(label || "timeout")), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => window.clearTimeout(t));
   }
 
   async function postDesk(body, toastMeta) {
@@ -1188,10 +1477,22 @@
       showErr("Needs a live desk link.");
       return false;
     }
+    showToast("Sending…", false);
+    const work = (async () => {
     let cid = null;
     let mqttOk = false;
     let ntfyOk = false;
-    if (window.BuddyLive && typeof BuddyLive.sendCmd === "function") {
+    let acked = false;
+    if (window.BuddyLive && typeof BuddyLive.sendCmdReliable === "function") {
+      try {
+        const sellWait = String(body || "").toLowerCase().indexOf("sell:") === 0;
+        const res = await BuddyLive.sendCmdReliable(body, toastMeta || {}, { timeoutMs: sellWait ? 45000 : 5000, attempts: sellWait ? 2 : 4 });
+        mqttOk = !!(res && res.ok);
+        cid = res && res.cid;
+        if (res && res.ack) lastPostAck = res.ack;
+        acked = !!(res && res.ok && res.ack);
+      } catch (e) { /* fall through to ntfy */ }
+    } else if (window.BuddyLive && typeof BuddyLive.sendCmd === "function") {
       try {
         const res = await BuddyLive.sendCmd(body, toastMeta || {});
         mqttOk = !!(res && res.ok);
@@ -1202,32 +1503,71 @@
       try { cid = BuddyLive.newCid(); } catch (e) { cid = null; }
     }
     if (!cid) cid = "c" + Date.now().toString(16) + Math.random().toString(16).slice(2, 8);
+    // ntfy remains a slow fallback; skip if MQTT already acked
+    if (!acked) {
+      try {
+        const r = await fetch("https://ntfy.sh/" + encodeURIComponent("b-" + target.id), {
+          method: "POST",
+          body: "cid=" + cid + "\n" + body,
+          headers: { "Content-Type": "text/plain;charset=utf-8" }
+        });
+        ntfyOk = r.ok;
+      } catch (e) { ntfyOk = false; }
+      if (ntfyOk && window.BuddyLive && typeof BuddyLive.waitAck === "function" && !acked) {
+        try {
+          const waited = await BuddyLive.waitAck(cid, 8000);
+          acked = !!(waited && waited.ok);
+          if (waited && waited.ack) lastPostAck = waited.ack;
+        } catch (e) { /* ignore */ }
+      }
+    }
+    lastPostAcked = acked;
+    if (!mqttOk && !ntfyOk && !acked) throw new Error("bad status");
+    return acked || mqttOk || ntfyOk;
+    })();
     try {
-      const r = await fetch("https://ntfy.sh/" + encodeURIComponent("b-" + target.id), {
-        method: "POST",
-        body: "cid=" + cid + "\n" + body,
-        headers: { "Content-Type": "text/plain;charset=utf-8" }
-      });
-      ntfyOk = r.ok;
-    } catch (e) { ntfyOk = false; }
-    if (!mqttOk && !ntfyOk) throw new Error("bad status");
-    return true;
+      return await withTimeout(work, String(body || "").toLowerCase().indexOf("sell:") === 0 ? 100000 : 7000, "timeout");
+    } catch (err) {
+      if (String(err && err.message || err).indexOf("timeout") >= 0) {
+        showToast("No reply — try again", false);
+      }
+      throw err;
+    }
   }
 
+  let lastPostAcked = false;
+  let lastPostAck = null;
+  const sellNames = Object.create(null);
+  function markSoldKeys(key) {
+    const now = Date.now();
+    const remember = (k) => { if (k) soldUi[k] = now; };
+    remember(key);
+    const raw = String(key || "").replace(/^(paper|real):/, "");
+    const mint = raw.split("~")[0];
+    if (String(key || "").indexOf("paper:") === 0 && mint) remember("paper:" + mint);
+    const rows = (state.data && (state.data.positions || state.data.trades)) || [];
+    rows.forEach((p) => {
+      const m = String((p && (p.mint || p.pos_key)) || "").split("~")[0];
+      if (mint && m === mint) remember(sellKeyOf(p));
+    });
+  }
+  function ackLooksSold(ack) {
+    const msg = String((ack && ack.msg) || "");
+    return /already sold|already_closed/i.test(msg);
+  }
   async function runDesk(action) {
     try {
       if (action.type === "cmd") {
+        if (typeof action.after === "function") action.after();
+        if (state.data) render();
         let sent = 0;
         for (const c of action.cmds || []) {
-          if (await postDesk(c)) sent += 1;
+          // postDesk shows "Sending…", retries until cmd_ack; onAck toasts the desk reply.
+          if (await postDesk(c, { toast: action.toast || "Desk got it" })) sent += 1;
           if ((action.cmds || []).length > 1) await new Promise((r) => setTimeout(r, 350));
         }
-        if (sent) {
-          if (typeof action.after === "function") action.after();
-          showToast(action.toast || "Sent", false);
-          if (state.data) render();
-          window.setTimeout(load, 2000);
-        }
+        if (sent && state.data) render();
+        if (sent) window.setTimeout(load, 1200);
         return;
       }
       if (action.type === "style") {
@@ -1262,21 +1602,64 @@
         }
         return;
       }
-      const body = action.type === "sell" ? "close:" + action.mint : "reset:" + action.amount;
-      const ok = await postDesk(body);
+      if (action.type === "sell") {
+        const key = String(action.mint || "");
+        if (key) sellingUi[key] = { until: Date.now() + 120000 };
+        const nm = String(action.name || "").replace(/^\$/, "");
+        const mint = key.replace(/^(paper|real):/, "").split("~")[0];
+        if (mint && nm) sellNames[mint.slice(0, 8)] = nm;
+        /* Hide immediately so a missed ack / already-sold reply cannot bounce the card back. */
+        markSoldKeys(key);
+        if (state.data) render();
+        lastPostAcked = false;
+        lastPostAck = null;
+        const slow = window.setTimeout(() => showToast("Selling " + (nm || "position") + "… desk busy, still waiting", false), 8000);
+        let ok = false;
+        try { ok = await postDesk("sell:" + key, { toast: "Sold " + (nm || "") }); } finally { window.clearTimeout(slow); }
+        const ack = lastPostAck;
+        const already = ackLooksSold(ack);
+        const ackFail = !!(ack && ack.ok === false && !already);
+        if (ok && !lastPostAcked && !already) {
+          // Sent but no ack yet: keep the card hidden; the next snapshot confirms the close.
+          showToast("Sell sent · waiting for desk", false);
+          if (state.data) render();
+          window.setTimeout(load, 5000);
+          return;
+        }
+        if (!ok || ackFail) {
+          delete sellingUi[key];
+          delete soldUi[key];
+          showToast((ack && ack.msg) || "Sell failed", false);
+          if (state.data) render();
+        } else {
+          delete sellingUi[key];
+          markSoldKeys(key);
+          if (already) showToast("Already sold", false);
+          if (state.data) render();
+          window.setTimeout(load, 800);
+        }
+        return;
+      }
+      const ok = await postDesk("reset:" + action.amount);
       if (ok) {
-        showToast(action.type === "sell" ? "Sell sent" : "Reset sent", false);
+        showToast("Reset sent", false);
         window.setTimeout(load, 1500);
       }
     } catch (err) {
+      if (action && action.type === "sell" && action.mint) {
+        delete sellingUi[action.mint];
+        showToast("Sell failed", false);
+        if (state.data) render();
+      }
       showErr("Desk command failed");
     }
   }
 
   async function requestMode(next) {
+    closeModeConfirm();
+    if (modeUiBusy) return;
     if (isDemoPreview() || state.fixture) {
       showToast("Demo preview — mode switch disabled", false);
-      closeModeConfirm();
       return;
     }
     const target = dataPath();
@@ -1297,8 +1680,8 @@
       syncModeSwitch(next);
       showToast(
         next === "real"
-          ? "🔴 REAL mode ON: alerts only, you place trades on FOMO"
-          : "🟢 PAPER mode ON: auto buy/sell, no real money",
+          ? "🔴 REAL mode ON: auto buy/sell on the hot wallet"
+          : "🟢 PAPER mode ON: auto buy/sell paper · real auto off",
         next === "real"
       );
       if (state.data) {
@@ -1309,6 +1692,7 @@
       window.setTimeout(load, 800);
     } catch (err) {
       showErr("Could not switch mode");
+      if (state.data) syncModeSwitch(effectiveMode(state.data).live ? "real" : "paper");
     } finally {
       modeUiBusy = false;
       ["modePaper", "modeReal"].forEach((id) => {
@@ -1377,6 +1761,9 @@
       b.setAttribute("aria-selected", on ? "true" : "false");
     });
     document.querySelectorAll("main .tab").forEach((s) => s.classList.toggle("on", s.id === id));
+    document.body.dataset.tab = bar;
+    if (window.BuddyDash && BuddyDash.setActive) BuddyDash.setActive(id === "home" && document.visibilityState !== "hidden");
+    if (id === "prefs") state._prefsPainted = false;
     if (id !== "coin") {
       state.coinKey = null;
       state.coinMint = null;
@@ -1384,6 +1771,11 @@
       unloadDexEmbed();
     }
     window.scrollTo(0, 0);
+    if (state.data && id !== "coin") {
+      window.requestAnimationFrame(() => {
+        try { render(); } catch (e) { /* tab already visible */ }
+      });
+    }
   }
 
   function openTrade(index) {
@@ -1498,7 +1890,7 @@
     const fresh = state.coinMint !== mint;
     state.coinMint = mint;
     state.coinTrade = t;
-    const mode = (state.data && String(state.data.mode || "").toUpperCase() === "REAL") ? "REAL" : "PAPER";
+    const mode = (state.data && effectiveMode(state.data).live) ? "REAL" : "PAPER";
     const fills = coinFillsFor(mint);
     const opened = t && t.opened_at != null && t.entry != null && !t.watched;
     const focusKey = opened ? String(Number(t.opened_at)) + "|" + String(Number(t.entry)) : "";
@@ -1568,7 +1960,7 @@
       row.append(usd, sep, pct);
     }
     renderCoinChart(t, mark);
-    const fresh = mark ? freshLabel(mark) : null;
+    const fresh = mark ? freshLabel(mark, t) : null;
     const rows = mark ? [
       ["Entry", mark.entry == null ? "unknown" : price(mark.entry)],
       ["Current", mark.price == null ? "unknown" : price(mark.price)],
@@ -1617,6 +2009,14 @@
   }
 
   window.__buddyRender = () => { if (state.data) render(); };
+  window.__buddyLiveMark = (t) => liveMark(t);
+
+  function heroPct(p) {
+    const n = Number(p);
+    if (p == null || !Number.isFinite(n)) return "";
+    const a = Math.abs(n);
+    return "(" + (n < -0.005 ? "−" : "") + (a >= 10 ? Math.round(a) : a.toFixed(1)) + "%)";
+  }
 
   function liveEquityExtra(s, live) {
     if (live) return null;
@@ -1626,8 +2026,28 @@
       const src = String(t.mode || t.source || "").toUpperCase();
       if (/FOMO|REAL|LIVE|WALLET/.test(src)) return;
       const m = liveMark(t);
-      if (m && m.unrealized != null && Number.isFinite(m.unrealized)) { sum += m.unrealized; any = true; }
+      /* v83: a tick without a mark keeps that position's last known P&L (no balance flicker) */
+      const k = String(t.pos_key || t.mint || t.id || "");
+      state._uCache = state._uCache || {};
+      const mAt = toUnix(t.mark_fetched_at) || 0;
+      const prevU = k ? state._uCache[k] : null;
+      if (m && m.unrealized != null && Number.isFinite(m.unrealized) && prevU && prevU.mAt && Date.now() - prevU.at < 20000 && (!mAt || mAt < prevU.mAt)) {
+        /* v83: the 15s full snapshot can carry an older mark than the 1s live feed — never step back in time */
+        sum += prevU.v; any = true;
+      } else if (m && m.unrealized != null && Number.isFinite(m.unrealized)) {
+        sum += m.unrealized; any = true;
+        if (k) state._uCache[k] = { v: m.unrealized, at: Date.now(), mAt: mAt };
+      } else if (k && state._uCache[k] && Date.now() - state._uCache[k].at < 120000) {
+        sum += state._uCache[k].v; any = true;
+      }
     });
+    if (!any && state._uCache) {
+      /* v83: a tick with no open rows/marks (snapshot swap) keeps the last 20s of live P&L instead of dropping to cash */
+      Object.keys(state._uCache).forEach((k) => {
+        const c = state._uCache[k];
+        if (c && Date.now() - c.at < 20000) { sum += c.v; any = true; }
+      });
+    }
     return any ? sum : null;
   }
 
@@ -1668,13 +2088,12 @@
     const label = modeInfo.label;
     const live = modeInfo.live;
     const fomoBal = num(s.fomo_balance_usd);
-    const perf = live
-      ? { start: fomoBal != null ? fomoBal : 0, known: false, bal: fomoBal != null ? fomoBal : 0, usd: 0, pct: 0 }
-      : paperPerf;
-    const tone = live ? "flat" : toneOf(paperPerf.usd);
+    const rPerf = live ? realPerformance(s) : paperPerf;
+    const perf = rPerf;
+    const tone = toneOf(perf && perf.usd);
     const app = $("#app");
     app.classList.remove("tone-up", "tone-down", "tone-flat");
-    app.classList.add("tone-" + tone);
+    app.classList.add("tone-" + (tone || "flat"));
 
     syncModeSwitch(live ? "real" : "paper");
     const toastText = String(s.mode_toast || "");
@@ -1689,31 +2108,64 @@
 
     const banner = $("#modeBanner");
     if (banner) banner.hidden = !live;
-    $("#stackLabel").textContent = live ? "FOMO balance" : "Paper balance";
+    /* v83 hero (ref2/u4b): "Equity · $start at HH:MM · N% max size", live equity = cash + open marks */
+    const eqExtra = live ? null : liveEquityExtra(s, live);
+    window.__buddyHero = { bal: paperPerf.bal, extra: eqExtra, open: (opensOf(s, tradesOf(s)) || []).length, ts: s.ts };
+    const heroPerf = live ? perf : Object.assign({}, paperPerf, eqExtra != null ? {
+      bal: paperPerf.bal + eqExtra,
+      usd: (paperPerf.usd || 0) + eqExtra,
+      pct: paperPerf.start ? (((paperPerf.usd || 0) + eqExtra) / paperPerf.start) * 100 : paperPerf.pct
+    } : {});
+    {
+      const kb = [live ? "Wallet equity" : "Equity"];
+      const st0 = live ? rPerf : paperPerf;
+      if (st0 && st0.known && st0.start != null) {
+        const d0 = (s.dashboard || {});
+        const sinceTs = toUnix(d0.since_reset || d0.since);
+        const hhmm = sinceTs ? new Date(sinceTs * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }) : "";
+        kb.push(money(st0.start).replace(/\.00$/, "") + (hhmm ? " at " + hhmm : ""));
+      }
+      let szUsd = null;
+      if (live) szUsd = 3;
+      else {
+        try { const ds = s.desk_settings || {}; szUsd = num(ds.mode && ds.mode.values && ds.mode.values.buy_usd && ds.mode.values.buy_usd.value); } catch (eK) { szUsd = null; }
+      }
+      if (szUsd != null && heroPerf.bal) kb.push(Math.max(1, Math.round(100 * szUsd / heroPerf.bal)) + "% max size");
+      $("#stackLabel").textContent = kb.join(" · ");
+    }
     const realRow = $("#realBalRow");
     if (realRow) realRow.hidden = true;
-    let heroText = money(live ? fomoBal : paperPerf.bal);
-    if (live && fomoBal == null) {
-      const st = s.fomo_holdings_status || {};
-      heroText = (st && String(st.status || "").indexOf("missing") === 0) ? "wallet/API needed" : "—";
+    let heroText;
+    if (live) {
+      heroText = perf.bal != null ? money(perf.bal) : "—";
+    } else {
+      heroText = money(heroPerf.bal);
     }
-    if (window.BuddySpark && heroText === money(live ? fomoBal : paperPerf.bal)) BuddySpark.tween($("#bal"), live ? fomoBal : paperPerf.bal, money);
+    if (window.BuddySpark && heroPerf.bal != null && heroText === money(heroPerf.bal)) BuddySpark.tween($("#bal"), heroPerf.bal, money);
     else $("#bal").textContent = heroText;
     const row = $("#pnlRow");
     if (live) {
-      $("#pnlUsd").textContent = "—";
-      $("#pnlPct").textContent = "—";
-      row.className = "pnl-row flat";
-      $("#pnlSub").textContent = "Real wallet · alerts only — you place trades on FOMO";
+      const usd = perf.usd;
+      const pct = perf.pct;
+      if (window.BuddySpark && usd != null) {
+        BuddySpark.tween($("#pnlUsd"), usd, signedMoney);
+        BuddySpark.tween($("#pnlPct"), pct, heroPct);
+      } else {
+        $("#pnlUsd").textContent = usd != null ? signedMoney(usd) : "—";
+        $("#pnlPct").textContent = pct != null ? heroPct(pct) : "—";
+      }
+      row.className = "pnl-row " + (usd != null ? toneOf(usd) : "flat");
+      const startBit = rPerf.known ? "vs " + money(rPerf.start) + " start" : "hot wallet";
+      $("#pnlSub").textContent = "Today's P&L " + startBit;
     } else {
       if (window.BuddySpark) {
-        BuddySpark.tween($("#pnlUsd"), paperPerf.usd, signedMoney);
-        BuddySpark.tween($("#pnlPct"), paperPerf.pct, signedPct);
+        BuddySpark.tween($("#pnlUsd"), heroPerf.usd, signedMoney);
+        BuddySpark.tween($("#pnlPct"), heroPerf.pct, heroPct);
       } else {
-        $("#pnlUsd").textContent = signedMoney(paperPerf.usd);
-        $("#pnlPct").textContent = signedPct(paperPerf.pct);
+        $("#pnlUsd").textContent = signedMoney(heroPerf.usd);
+        $("#pnlPct").textContent = heroPct(heroPerf.pct);
       }
-      row.className = "pnl-row " + tone;
+      row.className = "pnl-row " + (toneOf(heroPerf.usd) || tone);
       const startBit = paperPerf.known ? "vs " + money(paperPerf.start) + " paper start" : "paper start not in this file yet";
       $("#pnlSub").textContent = "Night P&L " + startBit;
     }
@@ -1725,33 +2177,50 @@
     }
     if (window.BuddyCopy) {
       try { BuddyCopy.render(s); } catch (e) { /* copy card is optional */ }
-      try { if (window.BuddySettings) BuddySettings.render(s); } catch (e) { /* settings tab is optional */ }
+    }
+    if (window.BuddyCopyApp) {
+      try { BuddyCopyApp.render(s); } catch (e) { /* copy view is optional */ }
+    }
+    if (window.BuddySettings) {
+      try {
+        const prefsOn = !!(document.getElementById("prefs") && document.getElementById("prefs").classList.contains("on"));
+        if (BuddySettings.renderHomePreset) BuddySettings.renderHomePreset(s);
+        if (prefsOn || !state._prefsPainted) {
+          BuddySettings.render(s);
+          state._prefsPainted = true;
+        }
+      } catch (e) { /* settings tab is optional */ }
     }
     if (window.BuddyDash) {
-      try { BuddyDash.render(s, paperPerf, live); } catch (e) { /* dashboard is optional */ }
+      try { BuddyDash.render(s, live ? rPerf : paperPerf, live); } catch (e) { /* dashboard is optional */ }
     }
     if (window.BuddySession) {
       try { BuddySession.render(s); } catch (e) { /* desk power / sessions are optional */ }
     }
     if (window.BuddySpark) {
-      try { BuddySpark.render(s, paperPerf, live, liveEquityExtra(s, live)); } catch (e) { /* sparkline is optional */ }
+      try { BuddySpark.render(s, live ? rPerf : paperPerf, live, live ? null : eqExtra); } catch (e) { /* sparkline is optional */ }
     }
     const tsU = toUnix(s.ts);
-    const updated = s.live_ts && tsU
-      ? new Date(tsU * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })
-      : clock(s.ts);
+    let quoteTs = 0;
+    Object.keys(state.quotes || {}).forEach((k) => {
+      const q = state.quotes[k];
+      const qt = (q && (q.receivedAt || q.requestedAt)) || 0;
+      if (qt > quoteTs) quoteTs = qt;
+    });
+    const freshTs = Math.max(tsU || 0, toUnix(s.live_ts) || 0, quoteTs || 0) || null;
+    const updated = freshTs ? clock(freshTs, true) : clock(s.ts);
     const prefix = (state.fixture || isDemoPreview()) ? "Demo · " : "";
     $("#updated").textContent = prefix + (updated ? "Updated " + updated : "Updated time unknown");
-    document.title = "Buddy · " + (live ? (fomoBal == null ? "REAL" : money(fomoBal)) : signedMoney(paperPerf.usd));
+    document.title = "Buddy · " + (live ? (rPerf.bal != null ? money(rPerf.bal) : "REAL") : signedMoney(paperPerf.usd));
 
     let equity;
     let startBal = null;
     const nowTs = toUnix(s.ts) || Date.now() / 1000;
     if (live) {
-      const v = fomoBal != null ? fomoBal : 0;
-      equity = { synthetic: true, points: [{ ts: nowTs - 3600, balance: v }, { ts: nowTs, balance: v }] };
+      equity = equityOf({ equity: (s.real_equity && s.real_equity.length) ? s.real_equity : ((s.real && s.real.equity) || []) }, rPerf);
+      startBal = rPerf.known ? rPerf.start : null;
     } else {
-      equity = equityOf(s, paperPerf);
+      equity = equityOf({ equity: (s.paper_equity && s.paper_equity.length) ? s.paper_equity : (s.equity || []) }, paperPerf);
       startBal = paperPerf.known ? paperPerf.start : null;
     }
     if ($("#chart")) {
@@ -1782,7 +2251,7 @@
     $("#chartSpan").textContent = rangeTitle(rangeKey, points, equity.synthetic);
     if (equity.synthetic) {
       $("#chartCaption").textContent = live
-        ? ("Live FOMO wallet" + (fomoBal == null ? "." : " at " + money(fomoBal) + "."))
+        ? (rPerf.bal != null ? ("Hot wallet at " + money(rPerf.bal) + ".") : "No wallet history yet.")
         : ("No balance history yet. Flat line at " + money(paperPerf.bal) + ".");
     } else {
       const lo = Math.min.apply(null, points.map((p) => p.balance));
@@ -1802,30 +2271,40 @@
     const openSum = openUsd != null ? openUsd : 0;
     const freeSum = free != null ? free : paperPerf.bal - openSum;
     if (live) {
-      const holdRows = Array.isArray(s.fomo_holdings) ? s.fomo_holdings : [];
-      const holdUsd = holdRows.reduce((sum, h) => sum + (num(h && h.size_usd) || 0), 0);
+      const openN = (s.real && s.real.open) || (opensForMode(s, [], true).length) || 0;
+      const exp = num((s.real || {}).exposure_usd);
       $("#stats").innerHTML =
-        stat("Wallet", fomoBal != null ? money(fomoBal) : "—") +
-        stat("Holdings", holdRows.length ? money(holdUsd) : money(0)) +
-        stat("Desk", "Alerts only");
+        stat("Wallet", rPerf.bal != null ? money(rPerf.bal) : "—") +
+        stat("Open", exp != null ? money(exp) : String(openN)) +
+        stat("Today", rPerf.usd != null ? signedMoney(rPerf.usd) : "—");
     } else {
       $("#stats").innerHTML =
         stat("Free", money(freeSum)) + stat("Open", money(openSum)) + stat("Start", paperPerf.known ? money(paperPerf.start) : "—");
     }
 
-    const waiting = Array.isArray(s.waiting) ? s.waiting.slice() : [];
-    waiting.sort((a, b) => (toUnix(b.migrated_at) || 0) - (toUnix(a.migrated_at) || 0));
+    const waiting = (Array.isArray(s.waiting) ? s.waiting.slice() : []).filter(function (w) {
+      const cap = Number(w && (w.marketCap != null ? w.marketCap : (w.market_cap != null ? w.market_cap : (w.mcap != null ? w.mcap : w.last_mcap))));
+      return !(Number.isFinite(cap) && cap > 0 && cap < 10000);
+    });
+    waiting.sort((a, b) => {
+      const ae = a && a.entry_wait ? 1 : 0;
+      const be = b && b.entry_wait ? 1 : 0;
+      if (ae !== be) return be - ae;
+      return (toUnix(b.migrated_at) || 0) - (toUnix(a.migrated_at) || 0);
+    });
     const waitEl = $("#waiting");
     const waitCount = $("#waitCount");
+    const waitBlock = waitEl && waitEl.closest("section");
+    if (waitBlock) waitBlock.hidden = false;
     if (waitCount) waitCount.textContent = waiting.length ? String(waiting.length) : "";
     if (waitEl) {
       waitEl.innerHTML = waiting.length
         ? waiting.map(waitingRow).join("")
-        : emptyTrades({ title: "Waiting room empty", body: "Fresh migrants Buddy is watching will land here." });
+        : emptyTrades({ title: "Waiting room empty", body: "Coins close to passing filters, and entries waiting for a pullback, land here." });
     }
 
     state.trades = tradesOf(s);
-    const opens = opensForMode(s, state.trades, live);
+    const opens = opensForMode(s, state.trades, live).filter((t) => !(soldUi[sellKeyOf(t)] && Date.now() - soldUi[sellKeyOf(t)] < 90000));
     state.rows = state.trades.slice();
     opens.forEach((t) => {
       if (state.rows.indexOf(t) < 0) state.rows.push(t);
@@ -1875,16 +2354,17 @@
     $("#positions").innerHTML = opens.length
       ? opens.map((t) => tradeButton(t, rowIndex(t), "open")).join("")
       : emptyTrades(live
-        ? { title: "No FOMO holdings over $2", body: "Wallet tokens worth $2+ will show here in REAL mode." }
+        ? { title: "No open holdings", body: "When a real buy fills it shows up here." }
         : { title: "No open positions", body: "When Buddy takes a paper entry it shows up here." });
 
-    const realized = closed.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
-    const realizedKnown = closed.some((t) => t.pnl_usd != null);
+    const filledClosed = closed.filter((t) => !isFailedTrade(t));
+    const realized = filledClosed.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
+    const realizedKnown = filledClosed.some((t) => t.pnl_usd != null);
     const realizedEl = $("#realized");
     if (realizedKnown) {
       realizedEl.hidden = false;
       realizedEl.innerHTML = "Realized <span class=\"" + toneOf(realized) + "\">" + esc(signedMoney(realized)) + "</span> across " +
-        closed.length + (closed.length === 1 ? " close" : " closes");
+        filledClosed.length + (filledClosed.length === 1 ? " close" : " closes");
     } else {
       realizedEl.hidden = true;
       realizedEl.textContent = "";
@@ -1898,23 +2378,48 @@
         body: "Coins Buddy buys and sells will show up here with dollar and percent P&L."
       });
 
-    const activity = Array.isArray(s.activity) ? s.activity.slice() : [];
+    const activity = activityOf(s);
     activity.sort((a, b) => (toUnix(b.ts) || 0) - (toUnix(a.ts) || 0));
     const homeTape = activity.slice(0, 4);
     $("#seeActivity").hidden = activity.length <= 4;
     $("#homeActivity").innerHTML = homeTape.length
       ? homeTape.map(activityRow).join("")
-      : emptyTrades({ title: "No activity yet", body: "Scanner finds, waits, and exits will show on the tape." });
+      : emptyTrades(live
+        ? { title: "No activity yet", body: "Real buys and sells will show here with dollar and percent P&L." }
+        : { title: "No activity yet", body: "Scanner finds, waits, and exits will show on the tape." });
 
-    $("#trades").innerHTML = state.trades.length
-      ? groupedTrades(state.trades, rowIndex)
+    const tradeCap = state.tradeLimit || 100;
+    const actCap = state.activityLimit || 100;
+    const tradesHtml = state.trades.length
+      ? groupedTrades(state.trades, rowIndex, tradeCap)
       : emptyTrades({
         title: "No trades yet",
         body: "Closed buys and sells land here. An empty night is a flat book, not a missing screen."
       });
-    $("#activityFeed").innerHTML = activity.length
-      ? activity.map(activityRow).join("")
-      : emptyTrades({ title: "No activity yet", body: "Scanner finds, waits, and exits will show on the tape." });
+    const tradeSig = (state.trades.length) + ":" + tradeCap + ":" + (state.trades[0] && (state.trades[0].closed_at || state.trades[0].opened_at) || "") + ":" + (state.trades.length && (state.trades[state.trades.length - 1].closed_at || state.trades[state.trades.length - 1].mint) || "");
+    if (tradeSig !== state._tradeSig) {
+      state._tradeSig = tradeSig;
+      let extra = "";
+      if (state.trades.length > tradeCap) {
+        extra = '<button type="button" class="more-btn" data-more="trades">Load more (' + (state.trades.length - tradeCap) + " left)</button>";
+      }
+      $("#trades").innerHTML = tradesHtml + extra;
+    }
+    const actSlice = activity.slice(0, actCap);
+    const actHtml = activity.length
+      ? actSlice.map(activityRow).join("")
+      : emptyTrades(live
+        ? { title: "No activity yet", body: "Real buys and sells will show here with dollar and percent P&L." }
+        : { title: "No activity yet", body: "Scanner finds, waits, and exits will show on the tape." });
+    const actSig = activity.length + ":" + actCap + ":" + (activity[0] && (activity[0].ts + "|" + activity[0].title) || "") + ":" + (activity[actSlice.length - 1] && activity[actSlice.length - 1].ts || "");
+    if (actSig !== state._actSig) {
+      state._actSig = actSig;
+      let extra = "";
+      if (activity.length > actCap) {
+        extra = '<button type="button" class="more-btn" data-more="activity">Load more (' + (activity.length - actCap) + " left)</button>";
+      }
+      $("#activityFeed").innerHTML = actHtml + extra;
+    }
 
     const agentHost = $("#agentCards");
     agentHost.innerHTML = names.length
@@ -1945,12 +2450,14 @@
     resolvePendingLogos();
   }
 
-  function groupedTrades(trades, rowIndex) {
+  function groupedTrades(trades, rowIndex, cap) {
     const closed = trades.filter((t) => !t.open);
     const open = trades.filter((t) => t.open);
+    const limit = cap || 100;
+    const shownClosed = closed.slice(0, Math.max(0, limit - open.length));
     let html = "";
-    if (closed.length) {
-      html += '<p class="group-label">Closed</p>' + closed.map((t) => tradeButton(t, rowIndex(t))).join("");
+    if (shownClosed.length) {
+      html += '<p class="group-label">Closed</p>' + shownClosed.map((t) => tradeButton(t, rowIndex(t))).join("");
     }
     if (open.length) {
       html += '<p class="group-label">Open</p>' + open.map((t) => tradeButton(t, rowIndex(t), "open")).join("");
@@ -2034,26 +2541,30 @@
   }
 
   async function loadLiveState(id) {
-    const results = await Promise.all(rawStateUrls(id).map(async (url) => {
+    const urls = rawStateUrls(id);
+    const found = [];
+    let saw404 = 0;
+    for (let i = 0; i < urls.length; i++) {
       try {
-        const data = await fetchJsonSilent(url);
-        if (!data || typeof data !== "object") return { ok: false, status: 0 };
-        return { ok: true, data };
+        const data = await fetchJsonSilent(urls[i]);
+        if (!data || typeof data !== "object") continue;
+        found.push(data);
+        const age = Date.now() / 1000 - stateStamp(data);
+        if (stateStamp(data) && age < 20) break; // fresh enough; skip the other 8MB copies
       } catch (e) {
-        return { ok: false, status: e && e.status };
+        if (e && e.status === 404) saw404++;
       }
-    }));
-    const found = results.filter((x) => x.ok).map((x) => x.data);
+    }
     if (found.length) {
       found.sort((a, b) => stateStamp(b) - stateStamp(a));
       return { data: found[0], notFound: false };
     }
-    const saw404 = results.length > 0 && results.every((x) => x.status === 404);
-    return { data: null, notFound: saw404 };
+    return { data: null, notFound: saw404 === urls.length };
   }
 
   let inflight = false;
   async function load() {
+    if (document.visibilityState === "hidden" && state.data) return;
 
     const target = dataPath();
     if (!target) {
@@ -2139,13 +2650,14 @@
   if (window.BuddyStyles) {
     BuddyStyles.hooks.requestSwitch = (a) => openDeskConfirm({ type: "style", name: a.name, label: a.label });
     BuddyStyles.hooks.toast = (t) => showToast(t, false);
+    BuddyStyles.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
   }
   if (window.BuddyCopy) {
     BuddyCopy.hooks.request = (on) => openDeskConfirm({ type: "copy", on: !!on });
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v50"; /* sessions-v50 */
+      BuddySettings.hooks.version = "app v83"; /* desk-u4b-v83 hero+modes */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {
@@ -2177,15 +2689,82 @@
       }
     };
   }
+  function askSellFrom(el) {
+    if (!el) return false;
+    const sell = el.closest ? el.closest("[data-sell]") : null;
+    if (!sell) return false;
+    confirmArmedAt = Date.now() + 500; // ignore a ghost click on the newly shown OK button
+    openDeskConfirm({ type: "sell", mint: sell.dataset.sell, name: sell.dataset.sellName });
+    return true;
+  }
+  function onSellPointer(e) {
+    const sell = e.target && e.target.closest && e.target.closest("[data-sell]");
+    if (!sell) return;
+    if (Date.now() - confirmOpenedAt < 1500) { e.preventDefault(); e.stopPropagation(); return; }
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+    askSellFrom(sell);
+  }
+  // Capture phase: Sell now must not be swallowed by the trade card or other hooks.
+  // pointerup covers phones that drop the generated click; confirmArmedAt blocks a ghost OK tap.
+  /* v83: the open cards re-render every ~1s from MQTT. A tap whose pointerup/click lands after the
+     re-render hit a detached button and was lost ("Sell now isn't working"). Open the confirm on
+     pointerdown/touchstart instead, and swallow the matching up/click. */
+  let confirmOpenedAt = 0;
+  let lastDown = { el: null, at: 0 };
+  document.addEventListener("pointerdown", (e) => { lastDown = { el: e.target, at: Date.now() }; }, true);
+  document.addEventListener("touchstart", (e) => { lastDown = { el: e.target, at: Date.now() }; }, { capture: true, passive: true });
+  function onSellDown(e) {
+    const sell = e.target && e.target.closest && e.target.closest("[data-sell]");
+    if (!sell) return;
+    if (e.type === "touchstart" && Date.now() - confirmOpenedAt < 600) return;
+    if (e.cancelable) e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+    if (Date.now() - confirmOpenedAt < 600) return;
+    confirmOpenedAt = Date.now();
+    askSellFrom(sell);
+    confirmArmedAt = Date.now() + 450;
+  }
+  document.addEventListener("pointerdown", onSellDown, true);
+  document.addEventListener("touchstart", onSellDown, { capture: true, passive: false });
+  document.addEventListener("click", onSellPointer, true);
+  document.addEventListener("pointerup", onSellPointer, true);
+  function onConfirmOk(e) {
+    const ok = e.target && e.target.closest && e.target.closest("#modeConfirmOk");
+    if (!ok) return;
+    if (!pendingDesk) return;
+    const downRaw = lastDown.el && lastDown.el.nodeType === 3 ? lastDown.el.parentElement : lastDown.el;
+    const downOnOk = !!(downRaw && downRaw.closest && downRaw.closest("#modeConfirmOk") && lastDown.at > confirmOpenedAt);
+    if (Date.now() < confirmArmedAt ||
+        (pendingDesk.type === "sell" && !downOnOk)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    const action = pendingDesk;
+    closeModeConfirm();
+    runDesk(action);
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+  }
+  document.addEventListener("click", onConfirmOk, true);
+  document.addEventListener("pointerup", onConfirmOk, true);
+
   document.querySelector("main").addEventListener("click", (e) => {
     if (e.target.closest("a")) return;
     if (window.BuddyStyles && BuddyStyles.onClick(e, state.data)) return;
     if (window.BuddyCopy && BuddyCopy.onClick(e, state.data)) return;
     if (window.BuddySession && BuddySession.onClick(e, state.data)) return;
+    if (window.BuddySettings && BuddySettings.onHomeClick && BuddySettings.onHomeClick(e, state.data)) return;
     if (window.BuddySettings && BuddySettings.onClick(e, state.data)) return;
     if (window.BuddyAdaptive && BuddyAdaptive.onClick(e, state.data)) return;
     const sell = e.target.closest("[data-sell]");
     if (sell) {
+      e.preventDefault();
+      e.stopPropagation();
       openDeskConfirm({ type: "sell", mint: sell.dataset.sell, name: sell.dataset.sellName });
       return;
     }
@@ -2224,6 +2803,16 @@
           });
         }
       }
+      return;
+    }
+    const more = e.target.closest("[data-more]");
+    if (more) {
+      const kind = more.getAttribute("data-more");
+      if (kind === "activity") state.activityLimit = (state.activityLimit || 100) + 100;
+      if (kind === "trades") state.tradeLimit = (state.tradeLimit || 100) + 100;
+      state._actSig = "";
+      state._tradeSig = "";
+      if (state.data) render();
       return;
     }
     const goto = e.target.closest("[data-goto]");
@@ -2337,23 +2926,26 @@
     }
   }
 
-  /* ---- 5s live channel + client price fallback ---- */
+  /* ---- 1s live channel + client price fallback ---- */
   function liveQuoteFrom(sp) {
     return {
       mint: sp.mint, price: sp.price, pair: sp.pair || null, dex: null,
       requestedAt: sp.price_ts, receivedAt: sp.price_ts, quoteAsOf: null, quoteClock: "unverified",
-      source: sp.price_src === "dexscreener" ? "desk_live_dexscreener" : "desk_live", cacheMaxAgeS: 30, pollS: 5, realtime: false
+      source: sp.price_src === "dexscreener" ? "desk_live_dexscreener" : "desk_live", cacheMaxAgeS: 30, pollS: 1, realtime: false
     };
   }
   function setLiveDot(status) {
     const dot = $("#liveDot");
     if (!dot) return;
-    const hasOpen = !!(state.data && Array.isArray(state.data.positions) && state.data.positions.some((p) => p.status === "open"));
+    const realOpen = !!(state.data && state.data.real && Array.isArray(state.data.real.open_trades) && state.data.real.open_trades.length);
+    const paperOpen = !!(state.data && Array.isArray(state.data.positions) && state.data.positions.some((p) => p.status === "open"));
+    const hasOpen = realOpen || paperOpen;
     dot.hidden = status === "off" || !state.data || state.fixture;
     dot.className = "live-dot " + (status === "live" ? "on" : "fb");
+    dot.textContent = status === "live" ? "LIVE" : "FALLBACK";
     dot.title = status === "live"
-      ? "Live: desk snapshot every 5s"
-      : (hasOpen ? "Live stream offline: prices polled every 5s, desk state every ~60s" : "Live stream offline: desk state every ~60s");
+      ? "Live: desk state, prices, value and P&L every 1s"
+      : (hasOpen ? "Live stream offline: prices polled every 1s, published state as it arrives" : "Live stream offline: published desk state as it arrives");
   }
   function startLive(id) {
     if (!window.BuddyLive || state.liveStarted) return;
@@ -2362,7 +2954,9 @@
       onSnap: (snap) => {
         if (!state.data || state.fixture) return;
         state.data = BuddyLive.merge(state.data, snap);
-        (snap.positions || []).forEach((sp) => {
+        if (document.visibilityState === "hidden") return;
+        const liveMarks = (snap.positions || []).concat(((snap.real && snap.real.open_trades) || []));
+        liveMarks.forEach((sp) => {
           if (!sp.price || !sp.mint) return;
           const held = state.quotes[sp.mint];
           if (held && held.receivedAt && sp.price_ts && held.receivedAt > sp.price_ts) return;
@@ -2378,7 +2972,14 @@
       },
       onStatus: setLiveDot,
       onAck: (ack, pend) => {
-        const msg = (ack && ack.msg) || (pend && pend.toast) || "Desk got it";
+        let msg = (ack && ack.msg) || (pend && pend.toast) || "Desk got it";
+        msg = String(msg).replace(/^Sold ([1-9A-HJ-NP-Za-km-z]{8,})/, (m, p) => "Sold " + (sellNames[p.slice(0, 8)] || p.slice(0, 6)));
+        if (ackLooksSold(ack)) msg = "Already sold";
+        if (pend && /^sell:/i.test(String(pend.cmd || pend.toast || ""))) {
+          const cmd = String(pend.cmd || "");
+          const k = cmd.toLowerCase().indexOf("sell:") === 0 ? cmd.slice(5).trim() : "";
+          if (k && (ack && ack.ok || ackLooksSold(ack))) markSoldKeys(k);
+        }
         showToast(msg, false);
         if (state.data) render();
         window.setTimeout(load, 800);
@@ -2386,13 +2987,46 @@
     });
   }
 
+  /* Start MQTT immediately — do not wait for the 7–8MB state.json fetch.
+     iOS Safari otherwise sits on a stale GitHub snapshot and the Desk card looks static. */
+  try {
+    var bootTarget = dataPath();
+    if (bootTarget && bootTarget.kind === "live" && bootTarget.id) startLive(bootTarget.id);
+  } catch (eBoot) {}
   load();
-  setInterval(load, 3000);
-  // DexScreener prices for open coins: every 5s while the live stream is down, else every 30s.
+  if (window.__buddyPoll) return;
+  window.__buddyPoll = 1;
+  document.addEventListener("visibilitychange", () => {
+    if (window.BuddyDash && BuddyDash.setActive) {
+      const onHome = !!(document.getElementById("home") && document.getElementById("home").classList.contains("on"));
+      BuddyDash.setActive(onHome && document.visibilityState !== "hidden");
+    }
+  });
+  setInterval(() => {
+    if (document.visibilityState === "hidden") return;
+    tickHeld();
+    // MQTT snap is ~35KB every 1–2s. GitHub state.json is ~8MB and raw.githubusercontent
+    // caches it for 300s, so polling it on a phone looks like a 30–60s-stale desk.
+    // Prefer the live snap; only refetch the published file every 30s as a backup.
+    const live = window.BuddyLive && BuddyLive.status() === "live";
+    const snap = window.BuddyLive && BuddyLive.snap ? BuddyLive.snap() : null;
+    const snapAge = snap && snap.ts ? (Date.now() / 1000 - Number(snap.ts)) : 1e9;
+    if (state.data && (live || (snap && snapAge < 60))) {
+      if (snap) {
+        state.data = BuddyLive.merge(state.data, snap);
+        render();
+      }
+      if (Date.now() - (state._lastFullLoad || 0) < 30000) return;
+    }
+    state._lastFullLoad = Date.now();
+    load();
+  }, 1000);
+  // Prices for open coins: 1s from the server cache when live; 1s DexScreener backup otherwise.
   let lastQuotePoll = 0;
   setInterval(() => {
+    if (document.visibilityState === "hidden") return;
     const live = window.BuddyLive && BuddyLive.status() === "live";
-    const every = live ? 30000 : 5000;
+    const every = live ? 5000 : 1000;
     if (Date.now() - lastQuotePoll < every) return;
     lastQuotePoll = Date.now();
     pollQuotes();

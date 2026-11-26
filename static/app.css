@@ -3565,3 +3565,213 @@ body:has(#app.desk-v76),
 @keyframes lg-slide-in { from { opacity: 0; transform: translateY(-12px); background: rgba(255,255,255,0.06); } to { opacity: 1; transform: none; background: transparent; } }
 #app.desk-v76 .pipe-card .pipe-txt .pipe-sym { max-width: 100%; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 #app.desk-v76 .pipe-card .pipe-coin, #app.desk-v76 .pipe-card .pipe-txt { min-width: 0; max-width: 100%; }
+
+
+/* ===== v84 Desk | Copy app switch and Copy trading view ===== */
+.app-switch-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+.app-switch {
+  display: inline-flex;
+  width: 100%;
+  max-width: 280px;
+  gap: 0;
+  padding: 4px;
+  border-radius: 999px;
+  background: #0f0f12;
+  border: 1px solid #23232a;
+}
+.app-switch-btn {
+  flex: 1 1 0;
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  background: transparent;
+  color: #6e6e76;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.app-switch-btn.on {
+  background: #7c5cf5;
+  color: #f1edff;
+  box-shadow: 0 0 16px rgba(124,92,245,0.35);
+}
+.app-switch-btn[data-view="copy"].on {
+  background: #0e7490;
+  color: #e6fcff;
+  box-shadow: 0 0 16px rgba(34,211,238,0.28);
+}
+
+/* Hide desk main + tabbar when Copy view is on. Header stays. */
+#app.app-copy > main,
+#app.app-copy > .tabbar { display: none !important; }
+#app.app-copy #copyRoot { display: block; }
+#app.app-copy #copyTabbar { display: flex; }
+#copyRoot[hidden], #copyTabbar[hidden] { display: none !important; }
+
+#app.app-copy .brand-mark {
+  color: #22d3ee !important;
+  border-color: #164e63 !important;
+  background: #041016 !important;
+  box-shadow: 0 0 18px rgba(34,211,238,0.16) !important;
+}
+
+.copy-root { padding-bottom: 88px; }
+.copy-tab { display: none; }
+.copy-tab.on { display: block; }
+.copy-lead {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.copy-empty, .spark-empty {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.copy-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.copy-scan-meta { margin: 0 0 8px; font-size: 12.5px; }
+.copy-subhead {
+  margin: 12px 0 6px;
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.copy-pulse {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #333; flex: none;
+}
+.copy-pulse.on {
+  background: #22d3ee;
+  box-shadow: 0 0 8px rgba(34,211,238,0.9);
+  animation: copyPulse 1.6s ease-in-out infinite;
+}
+@keyframes copyPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
+
+#app.app-copy #copyStats.stats {
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 14px;
+}
+
+.cpw-head, .cpw-row, .cpw-ev {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) 0.8fr 0.6fr 0.7fr 0.8fr 0.7fr;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.cpw-head {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 720;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-bottom: 8px;
+}
+.cpw-h { font-weight: 760; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cpw-st { color: var(--muted); text-transform: capitalize; }
+.cpw-ev {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  padding: 8px 0;
+}
+.cpw-ev.add .cpw-h { color: var(--green); }
+.cpw-ev.drop .cpw-h { color: var(--red); }
+.cpw-why, .cpw-ago { color: var(--muted); font-size: 12px; }
+
+.cpt-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "main pnl" "meta pnl";
+  gap: 2px 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.cpt-main { grid-area: main; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.cpt-sym { font-weight: 780; }
+.cpt-wallet { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+.cpt-meta { grid-area: meta; color: var(--faint); font-size: 12px; }
+.cpt-pnl { grid-area: pnl; text-align: right; font-weight: 760; font-variant-numeric: tabular-nums; }
+.cpt-pnl small { display: block; font-size: 11px; font-weight: 650; color: inherit; opacity: 0.85; }
+
+.copy-tabbar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: space-around;
+  align-items: stretch;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  background: #000;
+  border-top: 1px solid var(--line);
+}
+.copy-tabbar button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--faint);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.copy-tabbar button.on { color: #22d3ee; }
+.copy-tabbar svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
+
+/* Flat v76 parity for the new chrome */
+#app.desk-v76 .app-switch {
+  background: #0f0f12 !important;
+  border: 1px solid #23232a !important;
+  box-shadow: none !important;
+}
+#app.desk-v76 .app-switch-btn {
+  background: transparent !important;
+  color: #6e6e76 !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+#app.desk-v76 .app-switch-btn.on {
+  background: #7c5cf5 !important;
+  color: #f1edff !important;
+  box-shadow: 0 0 16px rgba(124,92,245,0.35) !important;
+}
+#app.desk-v76 .app-switch-btn[data-view="copy"].on {
+  background: #0e7490 !important;
+  color: #e6fcff !important;
+  box-shadow: 0 0 16px rgba(34,211,238,0.28) !important;
+}
+#app.desk-v76 .copy-tabbar { background: #000 !important; border-top: 1px solid #1a1a1a; }
+#app.desk-v76 #copyStats.stats,
+#app.desk-v76 .copy-scan-card {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+#app.desk-v76 .copy-scan-card { padding: 10px 0; margin: 0; }

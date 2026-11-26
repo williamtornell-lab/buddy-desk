@@ -2178,6 +2178,9 @@
     if (window.BuddyCopy) {
       try { BuddyCopy.render(s); } catch (e) { /* copy card is optional */ }
     }
+    if (window.BuddyCopyApp) {
+      try { BuddyCopyApp.render(s); } catch (e) { /* copy view is optional */ }
+    }
     if (window.BuddySettings) {
       try {
         const prefsOn = !!(document.getElementById("prefs") && document.getElementById("prefs").classList.contains("on"));

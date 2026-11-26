@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <meta name="theme-color" content="#000000"/>
 <meta name="color-scheme" content="dark"/>
 <meta name="mobile-web-app-capable" content="yes"/>
@@ -15,7 +15,9 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=17"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <title>Buddy</title>
-<link rel="stylesheet" href="static/app.css?v=61"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"/>
+<link rel="stylesheet" href="static/app.css?v=84"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -27,7 +29,7 @@
   </div>
   <p class="splash-name">Buddy</p>
 </div>
-<div id="app" class="tone-flat">
+<div id="app" class="tone-flat desk-v76">
   <div id="demoBanner" class="demo-banner" hidden>Demo preview · sample data only</div>
   <header>
     <div class="brand-row">
@@ -40,6 +42,12 @@
         <button type="button" id="modeReal" class="mode-btn real" data-mode="real">REAL</button>
       </div>
     </div>
+    <div class="app-switch-row">
+      <div class="app-switch" role="group" aria-label="Desk or Copy trading">
+        <button type="button" id="viewDesk" class="app-switch-btn on" data-view="desk" aria-pressed="true">Desk</button>
+        <button type="button" id="viewCopy" class="app-switch-btn" data-view="copy" aria-pressed="false">Copy</button>
+      </div>
+    </div>
     <div class="header-meta">
       <div class="updated-row"><span id="liveDot" class="live-dot" hidden>LIVE</span><div id="updated" class="updated">Waiting for a desk</div></div>
       <a id="fomoAccount" class="fomo-account" href="https://fomo.family/profile/tornell?source=share_link&amp;r=savipww">
@@ -47,7 +55,7 @@
         <span class="fomo-label">FOMO · @tornell</span>
       </a>
     </div>
-    <div id="ticker" class="tkbar" hidden aria-label="Coin prices"><div class="tk-track"></div></div>
+    <!-- ticker banner removed (v78) -->
     <div id="modeBanner" class="mode-banner" hidden>REAL · auto buy/sell on the hot wallet</div>
   </header>
 
@@ -55,7 +63,7 @@
     <section id="home" class="tab on" aria-labelledby="homeTab">
       <div class="hero">
         <p class="kicker" id="stackLabel">Paper balance</p>
-        <p id="bal" class="bal">—</p>
+        <p id="bal" class="bal" data-split>—</p>
         <p id="realBalRow" class="real-bal" hidden>FOMO · <span id="realBal">—</span></p>
         <div id="pnlRow" class="pnl-row flat">
           <span id="pnlUsd">—</span>
@@ -76,13 +84,16 @@
         </div>
       </div>
 
-      <section id="presetCard" class="dash-card" aria-label="Coin filter presets">
-        <div id="presetSeg" class="preset-seg" role="group" aria-label="Coin filter presets"></div>
+      <section id="deskCard" class="dash-card pipe-card" aria-labelledby="deskTitle" hidden>
+        <div class="pipe-head">
+          <h2 id="deskTitle" class="pipe-title">Desk · 6 agents</h2>
+          <span id="deskCounts" class="pipe-counts"></span>
+        </div>
+        <div id="deskAgents" class="pipe"></div>
       </section>
 
-      <section id="deskCard" class="dash-card" aria-labelledby="deskTitle" hidden>
-        <div class="dash-head"><h2 id="deskTitle">Desk</h2><span id="deskCounts" class="muted"></span></div>
-        <div id="deskAgents" class="dk-list"></div>
+      <section id="presetCard" class="dash-card" aria-label="Coin filter presets">
+        <div id="presetSeg" class="preset-seg" role="group" aria-label="Coin filter presets"></div>
       </section>
 
       <section class="block" aria-labelledby="openHeading">
@@ -118,8 +129,13 @@
       </section>
 
       <section id="loggerCard" class="dash-card" aria-labelledby="loggerTitle" hidden>
-        <div class="dash-head"><h2 id="loggerTitle">Logger</h2><span id="loggerKilled" class="down"></span></div>
+        <div class="dash-head"><h2 id="loggerTitle">Logger</h2><span id="loggerLive" class="lg-live" hidden></span><span id="loggerKilled" class="down"></span></div>
         <div id="loggerFeed" class="lg-feed"></div>
+      </section>
+
+      <section id="reasonsCard" class="dash-card" aria-labelledby="reasonsTitle" hidden>
+        <div class="dash-head"><h2 id="reasonsTitle">Why they died</h2><span class="muted" id="reasonsMeta">since reset</span></div>
+        <div id="killReasons" class="kr-list died-bars"></div>
       </section>
 
     </section>
@@ -145,11 +161,6 @@
       <section id="sessionsCard" class="dash-card sessions-card" aria-labelledby="sessionsTitle" hidden>
         <div class="dash-head"><h2 id="sessionsTitle">Sessions</h2><span id="sessionsMeta" class="muted"></span></div>
         <div id="pastSessions" class="ps-list"></div>
-      </section>
-
-      <section id="reasonsCard" class="dash-card" aria-labelledby="reasonsTitle" hidden>
-        <div class="dash-head"><h2 id="reasonsTitle">Why they died</h2><span class="muted">since reset</span></div>
-        <div id="killReasons" class="kr-list"></div>
       </section>
 
       <div id="stats" class="stats"></div>
@@ -199,6 +210,13 @@
         <h2 id="agentsTab">Agents</h2>
         <button type="button" class="restart-btn restart-all" data-restart="all">Restart all</button>
       </div>
+      <section id="agentsPipeCard" class="dash-card pipe-card" aria-label="Desk pipeline" hidden>
+        <div class="pipe-head">
+          <h2 class="pipe-title">Desk · 6 agents</h2>
+          <span class="pipe-counts"></span>
+        </div>
+        <div id="agentsPipe" class="pipe"></div>
+      </section>
       <div id="agentCards" class="agents"></div>
       <details class="settings">
         <summary>Settings</summary>
@@ -281,6 +299,88 @@
     </button>
   </nav>
 
+
+  <div id="copyRoot" class="copy-root" hidden>
+    <section id="copyHome" class="copy-tab on" aria-labelledby="copyHomeTab">
+      <div class="hero">
+        <p class="kicker" id="copyKicker">Copy trading</p>
+        <p id="copyBal" class="bal" data-split>—</p>
+        <div id="copyPnlRow" class="pnl-row flat">
+          <span id="copyPnlUsd">—</span>
+          <span class="sep" aria-hidden="true"></span>
+          <span id="copyPnlPct">—</span>
+          <div id="copyMultPill" class="mult-pill flat" hidden><b id="copyMultX"></b><span id="copyMultWL"><i id="copyMultW">0</i>W / <i id="copyMultL">0</i>L</span></div>
+        </div>
+        <p id="copyPnlSub" class="sub">No copy P&amp;L yet</p>
+        <div id="copySparkWrap" class="spark-wrap">
+          <div id="copySpark" class="spark" role="img" aria-label="Copy trading equity" hidden></div>
+          <p id="copySparkEmpty" class="copy-empty spark-empty">No copy equity yet. The chart stays empty until a real copy fill is recorded.</p>
+          <div id="copySparkRanges" class="spark-ranges" role="group" aria-label="Copy equity range">
+            <button type="button" data-copy-spark="day">Day</button>
+            <button type="button" data-copy-spark="week" class="on">Week</button>
+            <button type="button" data-copy-spark="month">Month</button>
+            <button type="button" data-copy-spark="year">Year</button>
+            <button type="button" data-copy-spark="all">All</button>
+          </div>
+        </div>
+      </div>
+
+      <section id="copyScanCard" class="dash-card copy-scan-card" aria-labelledby="copyScanTitle">
+        <div class="dash-head">
+          <h2 id="copyScanTitle">Scanning wallets</h2>
+          <span id="copyScanPulse" class="copy-pulse" aria-hidden="true"></span>
+        </div>
+        <p id="copyScanMeta" class="copy-scan-meta muted"></p>
+        <div id="copyScanBody"></div>
+      </section>
+
+      <p id="copyNote" class="copy-note" hidden></p>
+
+      <div id="copyStats" class="stats" aria-label="Copy analytics"></div>
+
+      <section class="block" aria-labelledby="copyOpenHeading">
+        <div class="sec-head">
+          <h2 id="copyOpenHeading">Open copied trades</h2>
+          <span id="copyOpenCount" class="muted"></span>
+        </div>
+        <div id="copyOpens" class="sheet"></div>
+      </section>
+    </section>
+
+    <section id="copyWallets" class="copy-tab" aria-labelledby="copyWalletsTab">
+      <div class="sec-head page-head">
+        <h2 id="copyWalletsTab">Wallets</h2>
+        <span id="copyWalletCount" class="muted"></span>
+      </div>
+      <p class="copy-lead">Wallets the engine is watching, plus newly added winners and any that were dropped. Win rate, trades, P&amp;L and average hold come from recorded trips only.</p>
+      <div id="copyWalletList" class="sheet"></div>
+    </section>
+
+    <section id="copyActivity" class="copy-tab" aria-labelledby="copyActivityTab">
+      <div class="sec-head page-head">
+        <h2 id="copyActivityTab">Activity</h2>
+        <span id="copyClosedCount" class="muted"></span>
+      </div>
+      <p class="copy-lead">Closed copy trades, with the wallet that triggered each one and the delay between their fill and the desk’s copy.</p>
+      <div id="copyClosed" class="sheet"></div>
+    </section>
+  </div>
+
+  <nav id="copyTabbar" class="copy-tabbar" hidden aria-label="Copy sections">
+    <button type="button" data-copy-tab="copyHome" class="on" aria-selected="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M10 20v-6h4v6"/></svg>
+      Home
+    </button>
+    <button type="button" data-copy-tab="copyWallets" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="9" r="2.2"/><circle cx="17" cy="9" r="2.2"/><circle cx="12" cy="16" r="2.2"/><path d="M8.8 10.4 10.4 14M15.2 10.4 13.6 14"/></svg>
+      Wallets
+    </button>
+    <button type="button" data-copy-tab="copyActivity" aria-selected="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/></svg>
+      Activity
+    </button>
+  </nav>
+
   <div id="modeConfirm" class="mode-confirm" hidden>
     <div class="mode-confirm-card" role="dialog" aria-modal="true" aria-labelledby="modeConfirmTitle">
       <p id="modeConfirmTitle" class="mode-confirm-title">Switch mode?</p>
@@ -307,16 +407,17 @@
 })();
 </script>
 <script src="static/lwc-4.2.3.js"></script>
-<script src="static/marks.js?v=2"></script>
+<script src="static/marks.js?v=3"></script>
 <script src="static/dexchart.js?v=3"></script>
-<script src="static/styles.js?v=5"></script>
-<script src="static/spark.js?v=6"></script>
-<script src="static/dash.js?v=10"></script>
-<script src="static/live.js?v=6"></script>
-<script src="static/copy.js?v=3"></script>
+<script src="static/styles.js?v=7"></script>
+<script src="static/spark.js?v=83"></script>
+<script src="static/dash.js?v=83b"></script>
+<script src="static/live.js?v=83d"></script>
+<script src="static/copy.js?v=5"></script>
 <script src="static/adaptive.js?v=1"></script>
-<script src="static/settings.js?v=11"></script>
-<script src="static/session.js?v=6"></script>
-  <script src="static/app.js?v=61"></script>
+<script src="static/settings.js?v=78"></script>
+<script src="static/session.js?v=8"></script>
+<script src="static/copy_app.js?v=84"></script>
+  <script src="static/app.js?v=84"></script>
 </body>
 </html>
