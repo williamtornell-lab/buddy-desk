@@ -17,7 +17,7 @@
 <title>Buddy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"/>
-<link rel="stylesheet" href="static/app.css?v=85"/>
+<link rel="stylesheet" href="static/app.css?v=86"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -347,8 +347,8 @@
           </label>
           <label class="copy-ctl-field" for="copyTpPct">
             <span class="copy-ctl-lab">Take-profit</span>
-            <span class="copy-ctl-input"><input id="copyTpPct" type="number" inputmode="decimal" min="1" max="500" step="1" value="20">%</span>
-            <span class="copy-ctl-range">1–500%</span>
+            <span class="copy-ctl-input"><input id="copyTpPct" type="number" inputmode="decimal" min="0" max="500" step="1" value="0">%</span>
+            <span class="copy-ctl-range">0–500% · 0 follows the wallet’s sell</span>
           </label>
         </div>
         <button type="button" id="copyCtlSave" class="set-btn" disabled>Save</button>
@@ -447,7 +447,7 @@
 <script src="static/adaptive.js?v=1"></script>
 <script src="static/settings.js?v=78"></script>
 <script src="static/session.js?v=8"></script>
-<script src="static/copy_app.js?v=85"></script>
-  <script src="static/app.js?v=85"></script>
+<script src="static/copy_app.js?v=86"></script>
+  <script src="static/app.js?v=86"></script>
 </body>
 </html>

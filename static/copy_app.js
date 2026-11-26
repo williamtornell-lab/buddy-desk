@@ -1,4 +1,4 @@
-/* Buddy Copy trading view (v85). Desk | Copy switch is still view-only and
+/* Buddy Copy trading view (v86). Desk | Copy switch is still view-only and
    never posts desk:on/off, copy:on/off (FOMO), or REAL arm commands.
    Copy-mode controls post copytrade:on|off and set:copytrade:... through the
    same authenticated confirm path as desk settings. Renders state.wallet_copy
@@ -10,8 +10,8 @@
   var UP = "#30d158", DOWN = "#ff453a", FLAT = "#30d158";
   var W = 360, H = 96, PAD_T = 12, PAD_B = 12, X0 = 4, X_END = W * 0.82;
   var RANGES = { day: 86400, week: 7 * 86400, month: 30 * 86400, year: 365 * 86400 };
-  var BOUNDS = { buy_usd: [1, 100], sl_pct: [1, 50], tp_pct: [1, 500] };
-  var DEFAULTS = { buy_usd: 25, sl_pct: 8, tp_pct: 20 };
+  var BOUNDS = { buy_usd: [1, 100], sl_pct: [1, 50], tp_pct: [0, 500] };
+  var DEFAULTS = { buy_usd: 25, sl_pct: 8, tp_pct: 0 };
   var view = "desk";
   var tab = "copyHome";
   var last = null;
@@ -345,7 +345,7 @@
       save.textContent = (ctlPend && ctlPend.kind === "save") ? "Saving…" : "Save";
     }
     if (st) {
-      if (bad.length) st.textContent = "Buy $1–$100, stop 1–50%, take-profit 1–500%.";
+      if (bad.length) st.textContent = "Buy $1–$100, stop 1–50%, take-profit 0–500% (0 follows the wallet’s sell).";
       else if (ctlPend && ctlPend.kind === "toggle") st.textContent = "Sending…";
       else if (ctlPend && ctlPend.kind === "save") st.textContent = "Saving…";
       else if (Object.keys(dirty).length) st.textContent = "Unsaved changes.";
@@ -377,13 +377,13 @@
     });
     var stEl = $("#copyCtlStatus");
     if (bad.length) {
-      if (stEl) stEl.textContent = "Buy $1–$100, stop 1–50%, take-profit 1–500%.";
+      if (stEl) stEl.textContent = "Buy $1–$100, stop 1–50%, take-profit 0–500% (0 follows the wallet’s sell).";
       return;
     }
     if (!cmds.length) return;
     ask({
       title: "Save copy size and exits?",
-      body: "Applies to new PAPER copy trades only. Buy $1–$100, stop 1–50%, take-profit 1–500%. REAL limits stay $3 / 5 open / $50 daily loss and are never read from these fields.",
+      body: "Applies to new PAPER copy trades only. Buy $1–$100, stop 1–50%, take-profit 0–500% (0 follows the wallet’s sell). REAL limits stay $3 / 5 open / $50 daily loss and are never read from these fields.",
       ok: "Save",
       cmds: cmds,
       toast: "Copy settings sent",
