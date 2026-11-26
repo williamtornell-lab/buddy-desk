@@ -3775,3 +3775,74 @@ body:has(#app.desk-v76),
   border: 0 !important;
 }
 #app.desk-v76 .copy-scan-card { padding: 10px 0; margin: 0; }
+
+
+/* ===== v85 Copy trading controls (toggle + buy / SL / TP) ===== */
+.copy-ctl-card { margin: 14px 0 4px; }
+.copy-ctl-card .dash-head { align-items: center; }
+.copy-ctl-hint, .copy-ctl-status {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.copy-ctl-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.copy-ctl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.copy-ctl-lab {
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.copy-ctl-input {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--card-2, #121214);
+  font-weight: 740;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.copy-ctl-input input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 740;
+  outline: none;
+  padding: 0;
+  -moz-appearance: textfield;
+}
+.copy-ctl-input input::-webkit-outer-spin-button,
+.copy-ctl-input input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.copy-ctl-input.changed { border-color: #22d3ee; box-shadow: 0 0 0 1px rgba(34,211,238,0.35); }
+.copy-ctl-input.bad { border-color: #ff453a; }
+.copy-ctl-range { font-size: 11px; color: var(--faint); }
+#copyCtlSave { margin-top: 12px; }
+#copyEnabledSw.on { background: #0e7490; }
+#app.desk-v76 .copy-ctl-card {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  padding: 10px 0;
+  margin: 10px 0 0;
+}
+@media (max-width: 420px) {
+  .copy-ctl-fields { grid-template-columns: 1fr; }
+}
