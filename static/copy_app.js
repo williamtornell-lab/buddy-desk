@@ -1,6 +1,8 @@
-/* Buddy Copy trading view (v84). View-only: this switch never posts
-   desk:on/off, copy:on/off, or REAL arm commands. Renders state.wallet_copy
-   only — never invents fills, wallets, or P&L. Desk mode is unchanged. */
+/* Buddy Copy trading view (v85). Desk | Copy switch is still view-only and
+   never posts desk:on/off, copy:on/off (FOMO), or REAL arm commands.
+   Copy-mode controls post copytrade:on|off and set:copytrade:... through the
+   same authenticated confirm path as desk settings. Renders state.wallet_copy
+   only for fills — never invents P&L. Desk mode is unchanged. */
 (function (root) {
   "use strict";
   var KEY = "buddy.viewSource";
@@ -8,10 +10,15 @@
   var UP = "#30d158", DOWN = "#ff453a", FLAT = "#30d158";
   var W = 360, H = 96, PAD_T = 12, PAD_B = 12, X0 = 4, X_END = W * 0.82;
   var RANGES = { day: 86400, week: 7 * 86400, month: 30 * 86400, year: 365 * 86400 };
+  var BOUNDS = { buy_usd: [1, 100], sl_pct: [1, 50], tp_pct: [1, 500] };
+  var DEFAULTS = { buy_usd: 25, sl_pct: 8, tp_pct: 20 };
   var view = "desk";
   var tab = "copyHome";
   var last = null;
   var spark = { range: "week", drawn: null };
+  var hooks = { confirm: null };
+  var ctlPend = null;
+  var ctlEdits = { buy_usd: null, sl_pct: null, tp_pct: null };
 
   try { view = localStorage.getItem(KEY) || "desk"; } catch (e) { view = "desk"; }
   if (view !== "copy") view = "desk";
@@ -248,6 +255,149 @@
   }
 
   /* ---------- panels ---------- */
+
+  function ctlOf(s, c) {
+    var ds = (s && s.desk_settings && s.desk_settings.copy_trade) || {};
+    var st = (c && c.settings && typeof c.settings === "object") ? c.settings : ds;
+    function val(k, alias) {
+      var n = num(st[k]);
+      if (n == null && st.values && st.values[alias]) n = num(st.values[alias].value);
+      if (n == null && ds[k] != null) n = num(ds[k]);
+      return n;
+    }
+    var enabled = !!(st.copy_enabled || st.enabled || (c && c.copy_enabled) || ds.copy_enabled || ds.enabled);
+    return {
+      enabled: enabled,
+      buy_usd: val("copy_buy_usd", "buy_usd"),
+      sl_pct: val("copy_sl_pct", "sl_pct"),
+      tp_pct: val("copy_tp_pct", "tp_pct")
+    };
+  }
+  function fieldVal(id) {
+    var el = $(id);
+    return el ? num(el.value) : null;
+  }
+  function inBounds(key, n) {
+    if (n == null) return false;
+    var b = BOUNDS[key];
+    return n >= b[0] - 1e-12 && n <= b[1] + 1e-12;
+  }
+  function dirtyFields(srv) {
+    var out = {};
+    var ids = { buy_usd: "#copyBuyUsd", sl_pct: "#copySlPct", tp_pct: "#copyTpPct" };
+    Object.keys(ids).forEach(function (k) {
+      var cur = ctlEdits[k] != null ? ctlEdits[k] : fieldVal(ids[k]);
+      var base = srv[k] != null ? srv[k] : DEFAULTS[k];
+      if (cur != null && Math.abs(cur - base) > 1e-9) out[k] = cur;
+    });
+    return out;
+  }
+  function ask(a) {
+    if (hooks.confirm) hooks.confirm(a);
+  }
+  function setField(id, key, value, dirty, invalid) {
+    var el = $(id);
+    if (!el) return;
+    var focused = document.activeElement === el;
+    if (!focused) {
+      var shown = value != null ? value : DEFAULTS[key];
+      if (String(el.value) !== String(shown)) el.value = shown;
+    }
+    var wrap = el.closest(".copy-ctl-input");
+    if (wrap) {
+      wrap.classList.toggle("changed", !!dirty);
+      wrap.classList.toggle("bad", !!invalid);
+    }
+  }
+  function renderControls(s, c) {
+    var srv = ctlOf(s, c);
+    var sw = $("#copyEnabledSw"), hint = $("#copyCtlHint"), save = $("#copyCtlSave"), st = $("#copyCtlStatus");
+    if (ctlPend && Date.now() - ctlPend.at > 90000) ctlPend = null;
+    if (ctlPend && ctlPend.kind === "toggle" && ctlPend.on === srv.enabled) ctlPend = null;
+    if (ctlPend && ctlPend.kind === "save") {
+      var left = dirtyFields(srv);
+      if (!Object.keys(left).length) { ctlPend = null; ctlEdits = { buy_usd: null, sl_pct: null, tp_pct: null }; }
+    }
+    var shownOn = ctlPend && ctlPend.kind === "toggle" ? ctlPend.on : srv.enabled;
+    if (sw) {
+      sw.classList.toggle("on", !!shownOn);
+      sw.classList.toggle("busy", !!(ctlPend && ctlPend.kind === "toggle"));
+      sw.setAttribute("aria-checked", shownOn ? "true" : "false");
+      sw.disabled = !!(ctlPend && ctlPend.kind === "toggle");
+    }
+    if (hint) {
+      hint.textContent = shownOn
+        ? "On · copies book as PAPER trades on a separate copy balance. REAL cannot be triggered from copy mode."
+        : "Off · shadow only. Turn on to book PAPER fills on a separate copy balance. REAL cannot be triggered from copy mode.";
+    }
+    var dirty = dirtyFields(srv);
+    var bad = [];
+    [["#copyBuyUsd", "buy_usd"], ["#copySlPct", "sl_pct"], ["#copyTpPct", "tp_pct"]].forEach(function (pair) {
+      var k = pair[1];
+      var cur = ctlEdits[k] != null ? ctlEdits[k] : (dirty[k] != null ? dirty[k] : srv[k]);
+      var invalid = cur != null && !inBounds(k, cur);
+      if (invalid) bad.push(k);
+      var use = ctlEdits[k] != null ? ctlEdits[k] : (srv[k] != null ? srv[k] : DEFAULTS[k]);
+      setField(pair[0], k, use, dirty[k] != null, invalid);
+    });
+    if (save) {
+      save.disabled = !Object.keys(dirty).length || bad.length > 0 || !!(ctlPend && ctlPend.kind === "save");
+      save.textContent = (ctlPend && ctlPend.kind === "save") ? "Saving…" : "Save";
+    }
+    if (st) {
+      if (bad.length) st.textContent = "Buy $1–$100, stop 1–50%, take-profit 1–500%.";
+      else if (ctlPend && ctlPend.kind === "toggle") st.textContent = "Sending…";
+      else if (ctlPend && ctlPend.kind === "save") st.textContent = "Saving…";
+      else if (Object.keys(dirty).length) st.textContent = "Unsaved changes.";
+      else st.textContent = shownOn ? "PAPER copy ledger · live values from the desk." : "Saved. Copy trading is off.";
+    }
+  }
+  function toggleCopyTrade() {
+    var sw = $("#copyEnabledSw");
+    var on = sw ? !sw.classList.contains("on") : true;
+    ask({
+      title: on ? "Turn copy trading on?" : "Turn copy trading off?",
+      body: on
+        ? "PAPER only. New copies will be booked on a separate copy paper balance, using your buy amount, stop-loss and take-profit. This never arms REAL and never changes REAL limits. Existing desk paper trades are untouched."
+        : "Copy trading goes back to shadow only. Already-open paper copy trades will still close on the copy ledger. REAL is unchanged.",
+      ok: on ? "Turn on" : "Turn off",
+      cmds: [on ? "copytrade:on" : "copytrade:off"],
+      toast: on ? "Copy trading on · PAPER" : "Copy trading off · shadow only",
+      after: function () { ctlPend = { kind: "toggle", on: on, at: Date.now() }; }
+    });
+  }
+  function saveCopyTrade() {
+    var srv = ctlOf(last, wc(last));
+    var dirty = dirtyFields(srv);
+    var cmds = [];
+    var bad = [];
+    Object.keys(dirty).forEach(function (k) {
+      if (!inBounds(k, dirty[k])) bad.push(k);
+      else cmds.push("set:copytrade:" + k + "=" + dirty[k]);
+    });
+    var stEl = $("#copyCtlStatus");
+    if (bad.length) {
+      if (stEl) stEl.textContent = "Buy $1–$100, stop 1–50%, take-profit 1–500%.";
+      return;
+    }
+    if (!cmds.length) return;
+    ask({
+      title: "Save copy size and exits?",
+      body: "Applies to new PAPER copy trades only. Buy $1–$100, stop 1–50%, take-profit 1–500%. REAL limits stay $3 / 5 open / $50 daily loss and are never read from these fields.",
+      ok: "Save",
+      cmds: cmds,
+      toast: "Copy settings sent",
+      after: function () { ctlPend = { kind: "save", at: Date.now() }; }
+    });
+  }
+  function onCtlInput(e) {
+    var id = e.target && e.target.id;
+    var map = { copyBuyUsd: "buy_usd", copySlPct: "sl_pct", copyTpPct: "tp_pct" };
+    if (!map[id]) return;
+    ctlEdits[map[id]] = num(e.target.value);
+    renderControls(last, wc(last));
+  }
+
   function statusLabel(c) {
     if (!c || c.engine_status === "not_running") return { text: "Engine not running yet", live: false, pulse: false };
     if (c.live || (c.scan && c.scan.pulse)) return { text: "Live scanning wallets", live: true, pulse: true };
@@ -427,13 +577,25 @@
     renderClosed(c);
     renderAnalytics(c);
     renderNote(c);
+    renderControls(last, c);
   }
 
   function bind() {
+    if (bind.ok) return;
+    bind.ok = true;
     bindSpark();
     var deskBtn = $("#viewDesk"), copyBtn = $("#viewCopy");
     if (deskBtn) deskBtn.addEventListener("click", function () { setView("desk", true); });
     if (copyBtn) copyBtn.addEventListener("click", function () { setView("copy", true); });
+    var sw = $("#copyEnabledSw"), save = $("#copyCtlSave");
+    if (sw) sw.addEventListener("click", function (e) { e.preventDefault(); toggleCopyTrade(); });
+    if (save) save.addEventListener("click", function (e) { e.preventDefault(); saveCopyTrade(); });
+    ["copyBuyUsd", "copySlPct", "copyTpPct"].forEach(function (id) {
+      var el = $("#" + id);
+      if (!el) return;
+      el.addEventListener("input", onCtlInput);
+      el.addEventListener("change", onCtlInput);
+    });
     var bar = $("#copyTabbar");
     if (bar) bar.addEventListener("click", function (e) {
       var b = e.target.closest("[data-copy-tab]"); if (!b) return;
@@ -447,5 +609,5 @@
     else bind();
   }
 
-  root.BuddyCopyApp = { render: render, setView: setView, view: function () { return view; } };
+  root.BuddyCopyApp = { render: render, setView: setView, view: function () { return view; }, hooks: hooks };
 })(typeof window !== "undefined" ? window : globalThis);
