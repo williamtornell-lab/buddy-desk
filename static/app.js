@@ -2656,11 +2656,8 @@
     BuddyCopy.hooks.request = (on) => openDeskConfirm({ type: "copy", on: !!on });
     if (window.BuddyStyles) BuddyStyles.hooks.requestSub = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
     if (window.BuddySession) BuddySession.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
-    if (window.BuddyCopyApp && BuddyCopyApp.hooks) {
-      BuddyCopyApp.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
-    }
     if (window.BuddySettings) {
-      BuddySettings.hooks.version = "app v85"; /* copy-mode toggle + buy/SL/TP */
+      BuddySettings.hooks.version = "app v83"; /* desk-u4b-v83 hero+modes */
       BuddySettings.hooks.confirm = (a) => openDeskConfirm(Object.assign({ type: "cmd" }, a));
       BuddySettings.hooks.scalp = (a) => openDeskConfirm({ type: "scalp", sub: a.sub, on: !!a.on });
       BuddySettings.hooks.openKeys = () => {

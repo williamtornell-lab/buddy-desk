@@ -17,7 +17,7 @@
 <title>Buddy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"/>
-<link rel="stylesheet" href="static/app.css?v=85"/>
+<link rel="stylesheet" href="static/app.css?v=84"/>
 </head>
 <body>
 <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Buddy">
@@ -325,36 +325,6 @@
         </div>
       </div>
 
-
-      <section id="copyCtlCard" class="dash-card copy-ctl-card" aria-labelledby="copyCtlTitle">
-        <div class="dash-head">
-          <h2 id="copyCtlTitle">Copy trading</h2>
-          <button type="button" id="copyEnabledSw" class="cr-switch" role="switch" aria-checked="false" aria-label="Copy trading">
-            <span class="cr-knob"></span>
-          </button>
-        </div>
-        <p id="copyCtlHint" class="copy-ctl-hint">Off · shadow only. Turn on to book PAPER fills on a separate copy balance. REAL cannot be triggered from copy mode.</p>
-        <div class="copy-ctl-fields">
-          <label class="copy-ctl-field" for="copyBuyUsd">
-            <span class="copy-ctl-lab">Buy amount</span>
-            <span class="copy-ctl-input">$<input id="copyBuyUsd" type="number" inputmode="decimal" min="1" max="100" step="1" value="25"></span>
-            <span class="copy-ctl-range">$1–$100</span>
-          </label>
-          <label class="copy-ctl-field" for="copySlPct">
-            <span class="copy-ctl-lab">Stop-loss</span>
-            <span class="copy-ctl-input"><input id="copySlPct" type="number" inputmode="decimal" min="1" max="50" step="0.5" value="8">%</span>
-            <span class="copy-ctl-range">1–50%</span>
-          </label>
-          <label class="copy-ctl-field" for="copyTpPct">
-            <span class="copy-ctl-lab">Take-profit</span>
-            <span class="copy-ctl-input"><input id="copyTpPct" type="number" inputmode="decimal" min="1" max="500" step="1" value="20">%</span>
-            <span class="copy-ctl-range">1–500%</span>
-          </label>
-        </div>
-        <button type="button" id="copyCtlSave" class="set-btn" disabled>Save</button>
-        <p id="copyCtlStatus" class="copy-ctl-status muted"></p>
-      </section>
-
       <section id="copyScanCard" class="dash-card copy-scan-card" aria-labelledby="copyScanTitle">
         <div class="dash-head">
           <h2 id="copyScanTitle">Scanning wallets</h2>
@@ -447,7 +417,7 @@
 <script src="static/adaptive.js?v=1"></script>
 <script src="static/settings.js?v=78"></script>
 <script src="static/session.js?v=8"></script>
-<script src="static/copy_app.js?v=85"></script>
-  <script src="static/app.js?v=85"></script>
+<script src="static/copy_app.js?v=84"></script>
+  <script src="static/app.js?v=84"></script>
 </body>
 </html>
